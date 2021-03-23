@@ -1,0 +1,207 @@
+---
+title: "Practical Machine Learning Course Project"
+date: 'Dec 2017'
+output:
+    html_document:
+    fig_caption: yes
+    highlight: espresso
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+## Introduction
+
+The data for this project came from this source: http://groupware.les.inf.puc-rio.br/har
+
+
+## Weight Lifting Exercise Dataset
+
+The approach we propose for the Weight Lifting Exercises dataset is to investigate "how (well)" an activity was performed by the wearer.
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+## Read the data
+
+```{r cache=T, include=TRUE}
+raw.training <- fread("pml-training.csv", na.strings = c("NA","",'#DIV/0!'))
+raw.testing <- fread("pml-testing.csv", na.strings = c("NA","",'#DIV/0!'))
+dim(raw.testing); dim(raw.training)
+p <- ggplot(raw.training, aes(classe, yaw_belt))+geom_boxplot(aes(fill=classe), alpha=0.3)+geom_violin(aes(fill=classe), alpha=0.3)+theme(legend.position = "NA")
+p
+```
+
+This plot demonstrates that the data have complex structure and probabilistic approaches would fail without proper data transformations.
+
+## Exploratory Data Analysis
+
+### Remove almost absent variables
+
+Some variables have more than 19200 observations that are "NA".
+Get rid of them:
+
+```{r cache=T, include=TRUE}
+missing.columns <- names(raw.training)[colSums(is.na(raw.training)) != 0]
+raw.training[, (missing.columns):=NULL]
+missing.columns <- names(raw.testing)[colSums(is.na(raw.testing)) != 0]
+raw.testing[, (missing.columns):=NULL]
+
+dim(raw.training); dim(raw.testing)
+```
+
+## Preprocessing
+
+### Standardizing and dealing with low variance variables
+
+It is a good practice to standardize data, to find the predictors with near-zero variance and exclude them from analysis. Here I use *preProcess()* and *nearZeroVar()* functions from *caret* package.
+
+```{r cache=T, include=TRUE}
+train.noClasse <- raw.training %>% select(-classe)
+charIdx <- which(lapply(train.noClasse, class) %in% "character")
+preVar <- preProcess(train.noClasse[,-c(charIdx), with=F], method=c('knnImpute', 'center', 'scale'))
+train.transVar <- predict(preVar, train.noClasse[,-c(charIdx), with=F])
+nz <- nearZeroVar(train.transVar, allowParallel = T)
+names(train.noClasse)[nz] # NULL
+```
+
+### Multicollinearity
+
+Exclude collinear variables with *findCorrelation()* function, as well as other unnecessary variables ("raw_timestamp_part_1", "raw_timestamp_part_2", "num_window"). Despite the fact that some algorithms (such as random forests) are insensitive to collinear predictors, excluding such variables can speed up the computations without affecting accuracy.
+
+```{r cache=T, include=TRUE}
+# remove character variables
+cor.train <- cor(train.transVar, method="pearson")
+highCor <- findCorrelation(cor.train, cutoff=0.75)
+names(train.transVar)[highCor]
+
+# exclude these variables
+train.transVar[, (highCor):=NULL]
+
+# remove other unnecessary variables
+unVar <- c("raw_timestamp_part_1", "raw_timestamp_part_2", "num_window")
+train.transVar[, (unVar):=NULL]
+dim(train.transVar)
+train.transVar$classe <- as.factor(raw.training$classe)
+```
+
+Now we have only `r dim(train.transVar)[2] - 1` predictors in the dataset.
+
+## Train the model
+
+I will fit two models with two different algorithms - random forest and naive bayes.
+
+### Creating data sets
+
+```{r cache=T, include=TRUE}
+set.seed(1234)
+inTrain <- createDataPartition(train.transVar$classe, p=3/4, list=F)
+training <- train.transVar[inTrain,]
+validation <- train.transVar[-inTrain,]
+dim(training); dim(validation)
+```
+
+
+### Cross-validation and optimization of the model's parameters
+
+I use random forest algorithm (as one of the most accurate algorithms) with 10 fold cross validation.
+
+```{r cache=T, include=TRUE, warning=F, message=F}
+fitRF <- train(classe ~., method="rf", data=training, trControl=trainControl(method='cv', number=10), allowParallel=TRUE, importance=TRUE )
+fitNB <- train(classe ~., method="nb", data=training, trControl=trainControl(method='cv', number=10), allowParallel=TRUE, importance=TRUE)
+```
+
+### Variable importance
+
+Random forest only
+
+```{r cache=T, include=TRUE}
+varImpPlot(fitRF$finalModel, sort = TRUE, type = 1, pch = 19, col = 1, cex = 0.6, main = "Importance of the Individual Predictors (RF)")
+confusionMatrix(fitRF)
+```
+
+### Prediction on Validation set
+
+#### random forest
+
+```{r cache=T, include=TRUE}
+predValidRF <- predict(fitRF, validation)
+confMat <- confusionMatrix(validation$classe, predValidRF)
+confMat$table
+```
+
+#### naive bayes
+
+```{r cache=T, include=TRUE, warning=FALSE}
+predValidNB <- predict(fitNB, validation)
+confMat <- confusionMatrix(validation$classe, predValidNB)
+confMat$table
+```
+
+
+### Accuracy on validation data set
+
+#### random forest
+
+```{r cache=T, include=TRUE}
+acc <- postResample(validation$classe, predValidRF)
+modAcc <- acc[[1]]
+modAcc
+```
+
+#### naive bayes
+
+```{r cache=T, include=TRUE}
+accNB <- postResample(validation$classe, predValidNB)
+modAccNB <- accNB[[1]]
+modAccNB
+```
+
+Naive Bayes classification has much lower accuracy on the validation data set.
+
+### Out of sample error
+
+#### random forest
+
+```{r cache=T, include=TRUE}
+OoSErr <- 1 - modAcc
+OoSErr
+```
+
+#### naive bayes
+
+```{r}
+1 - modAccNB
+```
+
+And much greater out of sample error. Therefore for prediction on test data sets I will use the model based on random forest approach.
+
+## Applying the model to 20 test cases
+
+Now I apply my model to test data set to submit the results to Course Project Prediction Quiz.
+But first I need to preprocess test data set in the same manner as the training data set.
+
+```{r cache=T, include=T}
+charIdx <- which(lapply(raw.testing, class) %in% "character")
+preVar <- preProcess(raw.testing[,-c(charIdx), with=F], method=c('center', 'scale'))
+test.transVar <- predict(preVar, raw.testing[,-c(charIdx), with=F])
+unVar <- c("raw_timestamp_part_1", "raw_timestamp_part_2", "num_window", "problem_id")
+test.transVar[, (unVar):=NULL]
+```
+
+And then make a prediction
+
+```{r cache=T, include=T}
+test.prediction <- predict(fitRF, test.transVar)
+test.prediction
+```
+
