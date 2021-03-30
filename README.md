@@ -32,9 +32,17 @@ Performance on test datset:
  - F-score = 0.97
  - AUC = 0.99
  
- 3. `weight_lifting_exercise.Rmd`- a data set from a [course](https://www.coursera.org/learn/practical-machine-learning) by Johns Hopkins University on Coursera
+ 3. `weight_lifting_exercise.Rmd`- a final project from a [course](https://www.coursera.org/learn/practical-machine-learning) by Johns Hopkins University on Coursera
+ 
+ Task description:
 
-compiled notebooks are in `./compiled`
+ The approach we propose for the Weight Lifting Exercises dataset is to investigate “how (well)” an activity was performed by the wearer.
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+ exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+----
+HTML versions of the notebooks are in `./compiled`
 
 4. `./medical` notebooks with code for the Central Institute of Gastroenterology
 
