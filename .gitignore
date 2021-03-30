@@ -1,0 +1,4 @@
+./idea/*.*
+./ipynb_checkpoints/*.*
+./medical/.DS_Store/*.*
+./medical/*html
