@@ -51,13 +51,11 @@ compiled notebooks are in `./compiled`
    - model 1: AUC = 0.52, Sens = 0.84, 1 - Spec = 0.88
    - model 2: AUC = 0.56, Sens = 0.88, 1 - Spec = 0.76
    
-![ROC model 2](./medical/figures/olfactory_loss_roc.png)
-
    4.3 `Fibroscan.Rmd` - diagnostic quality of a method 'FibroScan' for the diagnosis of liver fibrosis.
    
    - model 1: AUC = 0.99 (95% CI=0.98−1.00)
    - model 2: AUC = 0.85 (95% CI=0.77−0.92)
-
-![ROC model 1](./medical/figures/model_1_roc.png)
-
-![Sensitivity, specificity and accuracy, model 1](./medical/figures/model_1_ssa.png)
+   
+  4.4. `MMPs.Rmd` - analysis of factors influencing matrix metalloproteases (MMPs) concentrations in blood for certain diseases.
+  
+  4.5. `pre-eclampsia.Rmd` - analysis of factors affecting pre-eclampsia (Pre-eclampsia is a condition that affects some pregnant women usually during the second half of pregnancy (from around 20 weeks) or immediately after delivery of their baby. Women with pre-eclampsia have high blood pressure, fluid retention (oedema) and protein in the urine (proteinuria)
