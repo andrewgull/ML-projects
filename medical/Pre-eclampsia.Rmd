@@ -1,0 +1,479 @@
+---
+title: "ROC"
+author: "Andrei Guliaev"
+date: "August 11, 2017"
+output:
+  html_document:
+    fig_caption: yes
+    highlight: espresso
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#suppressPackageStartupMessages()
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+#library(dplyr)
+#library(pROC)
+library(ggplot2)
+library(ROCR)
+library(cvAUC)
+library(car)
+library(caret)
+```
+
+## Отбор данных
+Нас интересуют колонки **Гестоз**, **PAPP-A (абс.)**, **PAPP-A (MoM)**, **ПИ**, **МАУ**.
+
+0 и 1 в колонках *Гестоз* и *МАУ* (с 1-го по 96-е наблюдение) будут заменены на *нет* и *да* соответственно. 
+
+Данные до преобразования (первые 6 строк):
+
+```{r echo=FALSE, cache=TRUE}
+data <- read.csv("~/Dropbox/MCSC/zaripova/data.csv")
+data2 <- read.csv("~/Dropbox/MCSC/zaripova/data.csv")
+kable(head(data), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+Данные после преобразования (первые 6 строк):
+
+```{r echo=FALSE, cache=TRUE}
+data$Гестоз <- factor(data$Гестоз, labels = c("нет", "да"))
+data$МАУ <- factor(data$МАУ, labels = c("нет", "да"))
+kable(head(data), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+data2$Гестоз<- factor(data$Гестоз, labels = c("нет", "ода"))
+data2$МАУ <- factor(data$МАУ, labels = c("нет", "ода"))
+```
+
+## Задача №1. ПЭ ~ PAPP-A * МАУ
+
+Оценить совместное влияние PAPP-A и микроальбуминурии (МАУ) на развитие преэклампсии (Гестоз).
+
+Поскольку данные о МАУ есть только для первых 96 наблюдений, выборка будет сокращена.
+
+### Модель с взаимодействием предикторов (МАУ * PAPP-A):
+
+```{r echo=FALSE, cache=TRUE}
+fit1.abs <- glm(Гестоз ~  PAPP.A*МАУ, family = "binomial", data = data[1:96,])
+summary(fit1.abs)
+#fit1$coefficients
+```
+
+### Модель с взаимодействием предикторов (МАУ * PAPP-A (MoM)):
+
+```{r echo=FALSE, cache=TRUE}
+fit1.mom <- glm(Гестоз ~  PAPP.A.MoM.*МАУ, family = "binomial", data = data[1:96,])
+summary(fit1.mom)
+```
+
+### Модель без взаимодействия предикторов (PAPPA.MoM + МАУ):
+
+PAPP-A (MoM) выбран потому что при использованияя этих значений больше достоверных коэффициентов.
+
+```{r echo=FALSE, cache=TRUE}
+fit2.mom <- glm(Гестоз ~  PAPP.A.MoM.+МАУ, family = "binomial", data = data[1:96,])
+summary(fit2.mom)
+```
+
+### Вклад предикторов
+
+Оценим достоверность вклада предикторов в модель без взаимодействия (МАУ + PAPP-A (MoM))
+
+```{r echo=FALSE, cache=TRUE}
+anova(fit2.mom, test="Chisq")
+anova(fit1.mom, test="Chisq")
+```
+
+
+### Выбор лучшей модели
+
+Однозначно выявить не удалось. Но будем считать, что это модель без взаимодействий, т.к. взаимодействие все равно не значимо, а AIC у двух моделей сопоставим.
+
+```{r echo=FALSE, cache=TRUE}
+anova(fit1.mom, fit2.mom, test="Chisq")
+```
+
+
+## Задача №2. ПЭ ~ ПИ * МАУ
+
+Оценить совместное влияние пульсационного индекса (ПИ) и микроальбуминурии (МАУ) на развитие преэклампсии (Гестоз)
+
+```{r echo=FALSE, cache=TRUE}
+fit3 <-  glm(Гестоз ~  ПИ*МАУ, family = "binomial", data = data[1:96,])
+summary(fit3)
+```
+
+Значимы только предикторы Intercept и PI.
+
+Удалим из модели взаимодействие.
+
+```{r echo=FALSE, cache=TRUE}
+fit3.short <-  glm(Гестоз ~  ПИ+МАУ, family = "binomial", data = data[1:96,])
+summary(fit3.short)
+```
+
+Модель стала лучше и все предикторы значимы.
+
+## Задача №3. ПЭ ~ PAPP-A (МоМ) \* ПИ \* МАУ
+
+Оценить совместное влияние всех трех факторов (ПИ, МАУ, PAPP-A) на развитие ПЭ.
+
+### Модель со взаимодействием всех предикторов.
+
+```{r echo=FALSE, cache=TRUE, message=F, warning=F}
+fit4.all <- glm(Гестоз ~  PAPP.A.MoM.*ПИ*МАУ, family = "binomial", data = data[1:96,])
+summary(fit4.all)
+```
+
+Все предикторы незначимы.
+
+Исключаем взаимодействие PAPP-A (MoM) и ПИ
+
+```{r echo=FALSE, cache=TRUE}
+fit4.1 <- glm(Гестоз ~  PAPP.A.MoM.+ПИ*МАУ, family = "binomial", data = data[1:96,])
+summary(fit4.1)
+```
+
+Исключаем все взаимодействия
+
+```{r echo=FALSE, cache=TRUE}
+fit4.2 <- glm(Гестоз ~  PAPP.A.MoM.+ПИ+МАУ, family = "binomial", data = data[1:96,])
+summary(fit4.2)
+```
+
+Оставялем взаимодействие PAPP-A (MoM) и МАУ
+
+```{r echo=FALSE, cache=TRUE}
+fit4.3 <- glm(Гестоз ~  PAPP.A.MoM.*МАУ+ПИ, family = "binomial", data = data[1:96,])
+summary(fit4.3)
+```
+
+**Вывод:** все взамодействия незначимы. Лучшая модель со всеми предикторами это 
+
+Гестоз ~ PAPP-A (MoM) + ПИ + МАУ
+
+## Задача № 4. Сравнение моделей.
+
+Сравниваем три модели: 
+
+1. Гестоз ~ PAPP-A (MoM) + МАУ
+2. Гестоз ~ ПИ + МАУ
+3. Гестоз ~ ПИ + МАУ + PAPP-A (MoM)
+
+```{r echo=FALSE, cache=TRUE}
+anova(fit2.mom, fit3.short, fit4.2)
+```
+
+Лучшая модель №3 Гестоз ~ PAPP-A (MoM) + ПИ + МАУ
+
+Её формула выглядит так: $log(odds(Гестоз)) = -5.31 - 4.87*PAPP.A_{MoM} + 5.51*ПИ + 2.45*МАУ_{да}$
+
+## Задача №5. ROC-анализ
+
+Добавляем столбец с значениями ПЭ (Гестоз), предсказанными с помощью выбранной модели. 
+
+```{r echo=FALSE, cache=TRUE}
+data96 <- data[1:96,]
+data96$вероятность  <- predict(object = fit4.2, type = "response")
+kable(head(data96), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+kable(tail(data96), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+data2.96 <- data2[1:96,]
+data2.96$вероятность  <- predict(object = fit4.2, type = "response")
+```
+
+
+Оценим эффективность модели
+
+### ROC-кривая.
+
+```{r echo=FALSE, cache=TRUE}
+pred_fit4 <- prediction(data2.96$вероятность, data2.96$Гестоз)
+perf_fit4 <- performance(pred_fit4,"tpr","fpr")
+plot(perf_fit4, colorize=T )
+#plot(perf_fit4, colorize=T , print.cutoffs.at = seq(0,1,by=0.2))
+auc  <- performance(pred_fit4, measure = "auc")
+accuracy <- performance(pred_fit4, measure = "acc")
+
+cvauc <- AUC(data2.96$вероятность, data2.96$Гестоз)
+# conf interval and SE
+auc.cis <- ci.cvAUC(data2.96$вероятность, data2.96$Гестоз, confidence = .95)
+# alt way
+# r <- roc(data96$Гестоз, data96$вероятность) # pROC package
+# ci.auc(r)
+```
+
+Значение AUC равно `r round(auc@y.values[[1]], digits=2)` (95% доверительный интервал: `r round(auc.cis$ci[1], digits=3)` - `r round(auc.cis$ci[2], digits=3)`).
+
+### Кривые специфичности, чувствительности и аккуратности выбранной модели
+
+```{r echo=FALSE, cache=TRUE}
+perf3  <- performance(pred_fit4, x.measure = "cutoff", measure = "spec")
+perf4  <- performance(pred_fit4, x.measure = "cutoff", measure = "sens")
+perf5  <- performance(pred_fit4, x.measure = "cutoff", measure = "acc")
+
+plot(perf3, col = "red", lwd =2)
+plot(add=T, perf4 , col = "green", lwd =2)
+plot(add=T, perf5, lwd =2)
+
+legend(x = 0.6,y = 0.3, c("специфичность", "чувствительность", "точность"), 
+       lty = 1, col =c('red', 'green', 'black'), bty = 'n', cex = 1, lwd = 2)
+
+abline(v= 0.51, lwd = 2, lty=6)
+```
+
+Вертикальная линия отмечает оптимальное пороговое значение вероятности (0.51) для выбранной модели.
+
+### Точность предсказаний на графике
+
+```{r echo=FALSE, cache=TRUE}
+data96$предсказание  <- factor(ifelse(data96$вероятность >= 0.51, 1, 0), labels = c("нет", "да"))
+data96$верно  <- ifelse(data96$предсказание == data96$Гестоз, 1, 0)
+
+ggplot(data96, aes(вероятность, fill = factor(верно)))+
+  geom_dotplot(binwidth = 0.02)+
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10))+
+  scale_fill_discrete(name="правильное предсказание", labels=c("нет", "да"))
+#Среднее значение правильности предсказания - `r mean(data96$верно)`.
+```
+
+### Аккуратность, чувствительность и специфичность выбранной модели
+
+```{r, echo=FALSE, cache=F, message=F, warning=F}
+set.seed(111)
+library(caret)
+library(e1071)
+trainFit4.2 <- train(Гестоз ~ PAPP.A.MoM.+ПИ+МАУ, data=data96, method="glm")
+acc <- trainFit4.2$results # 0.900
+# make prediction
+trainFit4.2.pred <- predict(trainFit4.2, data96)
+# and measure spec & senc & accuracy
+sens.4.2.2 <- sensitivity(trainFit4.2.pred, data96$Гестоз) # 0.942
+spec.4.2.2 <- specificity(trainFit4.2.pred, data96$Гестоз) # 0.932
+```
+
+* Доля правильно классифицированных случаев PCCC = `r acc$Accuracy`
+* Чувствительность модели Se = `r sens.4.2.2`
+* Специфичность модели Sp = `r spec.4.2.2`
+
+#### Аккуратность, специфичность и чувствительность других моделей
+
+```{r, eval=F, echo=F, cache=T, warning=F, message=F}
+# creating ROCs and AUCs MUST BE DONE before the caret attachment!
+# in this way:
+trFit1 <- glm(Гестоз ~ PAPP.A.MoM.*МАУ, family="binomial", data=data2.96)
+trFit1.prob <- predict(trFit1, type = "response")
+ci.cvAUC(trFit1.prob, data2.96$Гестоз, confidence=.95)
+
+set.seed(111)
+# make model Gestose ~ PAPPA(MoM)*MAU
+trFit1 <- train(Гестоз ~ PAPP.A.MoM.*МАУ, data=data96, method="glm")
+trFit1.pred <- predict(trFit1, data96)
+fit1.sens <- sensitivity(trFit1.pred, data96$Гестоз) # 0.96
+fit1.spec <- specificity(trFit1.pred, data96$Гестоз) # 0.82
+acc.1 <- trFit1$results # 0.84
+# next model -> Gestose ~ PI * MAU
+trFit2 <- train(Гестоз ~ ПИ*МАУ, data=data96, method="glm")
+trFit2.pred <- predict(trFit2, data96)
+fit2.sens <- sensitivity(trFit2.pred, data96$Гестоз) # 0.923
+fit2.spec <- specificity(trFit2.pred, data96$Гестоз) # 0.841
+acc.2 <- trFit2$results # 0.847
+# next model -> ПЭ ~ PAPP-A (МоМ) * ПИ * МАУ
+trFit3 <- train(Гестоз ~ PAPP.A.MoM.*ПИ*МАУ, data=data96, method="glm")
+trFit3.pred <- predict(trFit3, data96)
+fit3.sens <- sensitivity(trFit3.pred, data96$Гестоз) # 0.942
+fit3.spec <- specificity(trFit3.pred, data96$Гестоз) # 0.909
+acc.3 <- trFit3$results # 0.881
+```
+
+## Мозаичный график: сопряженность МАУ и гестоза
+
+```{r echo=FALSE, cache=F}
+mosaicplot(МАУ~Гестоз, data=data96, main = "Мозаичный график")
+```
+
+### тест Хи-квадрат
+показывает, что присутствует взаимосвязь между МАУ и Гестозом
+
+```{r echo=FALSE, cache=F}
+chi <- chisq.test(data96$МАУ, data96$Гестоз)
+df <- data.frame("stat"=chi$statistic, "p-value"=chi$p.value, "df"=chi$parameter)
+kable(df, "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+
+Мозаичный график показывает, что наличие МАУ ассоциировано с гестозом
+
+## Различия спедних в группах с гестозом и без него
+
+### Пульсационный индекс
+
+```{r echo=FALSE, cache=F}
+ggplot(data96, aes(Гестоз, ПИ)) + geom_boxplot(notch = TRUE) + theme_minimal()
+```
+
+#### тест Краскела-Уоллеса
+
+```{r echo=FALSE, cache=F}
+ktest.PI <- kruskal.test(data96$ПИ, data96$Гестоз)
+df <- data.frame("stat"=ktest.PI$statistic, "p-value"=ktest.PI$p.value, "df"=ktest.PI$parameter)
+kable(df, "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+
+### Плазменный протеин PAPP.A (MoM)
+
+```{r echo=FALSE, cache=F}
+ggplot(data96, aes(Гестоз, PAPP.A.MoM.)) + geom_boxplot(notch = TRUE) +theme_minimal()
+```
+
+#### тест Краскела-Уоллеса
+
+```{r echo=FALSE, cache=F}
+ktest.PAPPA <- kruskal.test(data96$PAPP.A.MoM., data96$Гестоз)
+df <- data.frame("stat"=ktest.PAPPA$statistic, "p-value"=ktest.PAPPA$p.value, "df"=ktest.PAPPA$parameter)
+kable(df, "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+
+## Немного разведочного анализа данных
+
+### Матрица графиков рассеяния
+
+```{r, echo=FALSE, cache=F, message=F, warning=F}
+scatterplotMatrix(~PAPP.A.MoM.+ ПИ+ МАУ+ Гестоз, data = data96)
+```
+
+### График ядерной плотности: ПИ
+
+```{r, echo=FALSE, cache=F}
+qplot(ПИ, color=Гестоз,data = data96, geom="density")
+```
+
+### График ядерной плотности: PAPPA.MoM
+
+```{r, echo=FALSE, cache=F}
+qplot(PAPP.A.MoM., color=Гестоз, data = data96,geom="density")
+```
+
+### График рассеяния + линии регрессии PAPPA.MoM~ПИ | МАУ
+
+```{r, echo=FALSE, cache=F}
+qplot(PAPP.A.MoM., ПИ, color=МАУ, data = data96)+geom_smooth(method="lm")
+
+```
+
+### График рассеяния + линии регрессии PAPPA.MoM~ПИ | Гестоз
+
+```{r, echo=FALSE, cache=F}
+qplot(PAPP.A.MoM., ПИ, color=Гестоз, data = data96)+geom_smooth(method="lm")
+
+```
+
+### График рассеяния + линия регрессии PAPPA.MoM~ПИ
+
+```{r, echo=FALSE, cache=F}
+qplot(PAPP.A.MoM., ПИ, data = data96)+geom_smooth(method="lm")
+
+```
+
+### PAPPA.MoM ~ PAPPA.Abs
+
+#### график рассеяния
+
+```{r, echo=FALSE, cache=F}
+q1 <- qplot(PAPP.A.MoM., PAPP.A, data = data96, colour=Гестоз)
+q2 <- qplot(PAPP.A.MoM., PAPP.A, data = data96, colour=МАУ)
+grid.arrange(q1, q2, ncol=2)
+```
+
+#### регрессия
+
+```{r, echo=FALSE}
+q3 <- q1+geom_smooth(method="lm")
+q4 <- q2+geom_smooth(method = "lm")
+grid.arrange(q3, q4, ncol=2)
+```
+
+## Дополонительно
+
+### Различия в средних значениях ПИ и PAPP-A(MoM) при разных срока реализации гестоза
+
+#### ПИ ~ срок гестоза
+
+```{r, echo=F, cache=T, message=F, warning=F}
+library(readr)
+library(ggplot2)
+data_new <- read_csv("data.csv")
+data_new$Срок_гестоза <- ifelse(data_new$Срок >= 30, "поздний", "ранний")
+data_new$Срок_гестоза <- as.factor(data_new$Срок_гестоза)
+PIlate <- ggplot(data_new[!is.na(data_new$Срок_гестоза),], aes(Срок_гестоза, ПИ))
+PIlate + geom_boxplot() + theme_minimal() + xlab("Срок реализации преэклампсии")
+```
+
+```{r, echo=F, cache=T, message=F, warning=F}
+data_new1 <- na.omit(data_new)
+ktest.PI <- kruskal.test(data_new1$ПИ, data_new1$Срок_гестоза)
+df <- data.frame("stat"=ktest.PI$statistic, "p-value"=ktest.PI$p.value, "df"=ktest.PI$parameter)
+kable(df, "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+
+##### ПИ ~ срок гестоза (с доверительным интервалом)
+
+```{r, echo=F, cache=T, message=F, warning=F}
+PIlate+geom_boxplot(notch = T)+theme_minimal() + xlab("Срок реализации преэклампсии")
+```
+
+#### PAPP-A(MoM) ~ срок гестоза
+
+```{r, echo=F, cache=T, message=F, warning=F}
+PAPPlate <- ggplot(data_new[!is.na(data_new$Срок_гестоза),], aes(Срок_гестоза, `PAPP.A(MoM)`))
+PAPPlate + geom_boxplot() + theme_minimal() + xlab("Срок реализациии преэклампсии")
+```
+
+```{r, echo=F, cache=T, message=F, warning=F}
+ktest.PAPP <- kruskal.test(data_new1$`PAPP.A(MoM)`, data_new1$Срок_гестоза)
+df <- data.frame("stat"=ktest.PAPP$statistic, "p-value"=ktest.PAPP$p.value, "df"=ktest.PAPP$parameter)
+kable(df, "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+#### PAPP-A(MoM) ~ срок гестоза (с доверительным интервалом)
+
+```{r, echo=FALSE, cache=TRUE, message=F, warning=F}
+PAPPlate + geom_boxplot(notch=T) + theme_minimal() + xlab("Срок реализациии гестоза")
+```
+
+### Артериальное давление
+
+```{r, eval=F}
+dataAD <- read.csv("data.csv")
+ggplot(dataAD, aes(as.factor(Гестоз), СрАД))+geom_violin()+geom_jitter()
+ggplot(dataAD, aes(as.factor(Гестоз), СисАД))+geom_violin()+geom_jitter()
+ggplot(dataAD[!is.na(dataAD$МАУ),], aes(as.factor(Гестоз), СисАД))+geom_violin()+geom_jitter()+facet_grid(МАУ ~ .)
+ggplot(dataAD[!is.na(dataAD$МАУ),], aes(as.factor(Гестоз), СрАД))+geom_violin()+geom_jitter()+facet_grid(МАУ ~ .)
+cor.test(dataAD$СрАД, dataAD$СисАД, method = "spearman")
+fitAD.4.2 <- glm(Гестоз ~ PAPP.A.MoM.+ПИ+МАУ+СрАД, family = "binomial", data = dataAD[1:96,])
+summary(fitAD.4.2)
+qqnorm(dataAD$СисАД)
+qqnorm(dataAD$СрАД)
+# logariphming doesn't help
+
+```
+

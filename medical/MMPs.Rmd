@@ -1,0 +1,151 @@
+---
+title: "Matrix metalloproteinases (MMPs) English version"
+author: "A.Guliaev"
+date: "Feb 9, 2017"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+#knitr::opts_chunk$set(echo = TRUE)
+library(car)
+library(ggplot2)
+library(reshape)
+library(knitr)
+#library(gclus)
+#library(RColorBrewer)
+library(yarrr)
+#library(beeswarm)
+library(PMCMR)
+library(psych)
+library(stargazer, quietly = TRUE)
+
+data.reduced <- read.csv("~/Dropbox/MCSC/pancreatology/data.reduced.EN.csv", na = "empty", stringsAsFactors = TRUE)
+data.reduced.melt <- melt(data.reduced, id.vars = c("sex", "group", "cancer"))
+
+```
+
+## Descriptive statistics: data.reduced
+```{r descript, echo=F, warning=F}
+des <- describeBy(x = data.reduced.melt[,5], group = list(data.reduced.melt$group, data.reduced.melt$variable), mat=TRUE, digits = 2)
+rownames(des) <- c()
+kable(des[, c(-1, -4, -9, -10,-14, -15)])
+```
+
+
+## Scatter plot matrix: data.reduced
+```{r matrices, echo=FALSE}
+scatterplotMatrix(~MMP2+MMP9+TIMP2, data=data.reduced, main="", diagonal="qqplot")
+```
+
+
+## Scatter plot matrix: females
+```{r matrices fem, echo=FALSE}
+scatterplotMatrix(~MMP2+MMP9+TIMP2, data=data.reduced[data.reduced$sex=="fem",], main="", diagonal="qqplot")
+```
+
+
+## Scatter plot matrix: males
+```{r matrices males, echo=FALSE}
+scatterplotMatrix(~MMP2+MMP9+TIMP2, data=data.reduced[data.reduced$sex=="mal",], main="", diagonal="qqplot")
+```
+
+
+## Spearman correlation matrix: data.reduced
+```{r corr all, echo=F, warning=F}
+kable(cor(data.reduced[,4:6],method = "spearman"), digits=2)
+kable(cor(data.reduced[data.reduced$sex=="fem",4:6],method = "spearman"), digits=2)
+kable(cor(data.reduced[data.reduced$sex=="mal",4:6],method = "spearman"), digits=2)
+```
+
+
+### Spearman correlation: MMP2 ~ TIMP2
+```{r corr mmp2~timp2, echo=F, warning=F}
+cor.test(data.reduced$TIMP2, data.reduced$MMP2, method = "spearman")
+# cor.test(data.reduced$TIMP2, data.reduced$MMP2, method = "pearson")
+```
+
+
+## Simple linear regression: data.reduced
+```{r regr 1, echo=FALSE, warning=FALSE, message=FALSE}
+fit <- lm(TIMP2~MMP2, data=data.reduced)
+summary(fit)
+#stargazer(fit, type="latex")
+ggplot(data.reduced, aes(MMP2, TIMP2)) + geom_point(shape=1) + geom_smooth(method=lm)
+```
+
+
+## Kruskal-Wallis rank sum test: data.reduced
+### MMP2~group
+```{r kw test, echo=F, warning=FALSE}
+kruskal.test(MMP2~group, data=data.reduced)
+```
+
+#### Boxplot
+
+```{r mmp2 box, echo=F, warning=FALSE}
+ggplot(data.reduced, aes(group, MMP2))+geom_boxplot()+geom_jitter()+xlab("")
+
+```
+
+#### Pirate plot
+
+```{r, echo=F, warning=FALSE}
+pirateplot(MMP2 ~ group, data.reduced, avg.line.fun = median,pal="grey", point.cex = .9, point.col = "black", bean.f.col="black", bean.f.o = .1, avg.line.col="black", bar.b.o = 0, bar.f.o = 0,inf.f.col = "grey", inf.f.o = 0.6,  inf.disp = "bean", xlab = "")
+```
+
+
+### MMP9~group -> p-value = 0.01201
+```{r kw test 2, echo=F, warning=FALSE}
+kruskal.test(MMP9~group, data=data.reduced)
+```
+
+#### Boxplot
+
+```{r mmp9 box, echo=F, warning=F}
+ggplot(data.reduced, aes(group, MMP9))+geom_boxplot()+geom_jitter()+xlab("")
+```
+
+#### Pirate plot
+
+```{r mmp9 pirate, echo=F, warning=FALSE}
+pirateplot(MMP9 ~ group, data.reduced, avg.line.fun = median,pal="grey", point.cex = .9, point.col = "black", bean.f.col="black", bean.f.o = .1, avg.line.col="black", bar.b.o = 0, bar.f.o = 0,inf.f.col = "grey", inf.f.o = 0.6,  inf.disp = "bean", xlab = "")
+```
+
+
+### MMP9~group Dunn's test
+```{r mmp9 dunn, echo=F, warning=FALSE, message=FALSE}
+kw.posthoc.mmp9<-posthoc.kruskal.dunn.test(data.reduced$MMP9, data.reduced$group)
+summary(kw.posthoc.mmp9)
+#kw.posthoc.mmp9$statistic
+#kw.posthoc.mmp9$p.value
+```
+
+
+### TIMP2~group -> p-value = 0.03042
+```{r kw test 3, echo=F, warning=FALSE, message=FALSE, results='asis'}
+kruskal.test(TIMP2~group, data=data.reduced)
+#stargazer(summary(w), type = "latex")
+```
+
+#### Boxplot
+
+```{r timp2 box, echo=F, warning=F}
+ggplot(data.reduced, aes(group, TIMP2))+geom_boxplot()+geom_jitter()+xlab("")
+```
+
+#### Pirate plot
+
+```{r timp2 pirate, echo=F, warning=FALSE}
+pirateplot(TIMP2 ~ group, data.reduced, avg.line.fun = median,pal="grey", point.cex = .9, point.col = "black", bean.f.col="black", bean.f.o = .1, avg.line.col="black", bar.b.o = 0, bar.f.o = 0,inf.f.col = "grey", inf.f.o = 0.6,  inf.disp = "bean", xlab = "")
+```
+
+
+### TIMP2~group Dunn's test
+```{r timp2 dunn, echo=F}
+kw.posthoc.timp2<-posthoc.kruskal.dunn.test(data.reduced$TIMP2, data.reduced$group)
+summary(kw.posthoc.timp2)
+```

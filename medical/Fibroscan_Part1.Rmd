@@ -1,0 +1,859 @@
+---
+title: "fibroscan"
+output:
+  html_document:
+    fig_caption: yes
+    highlight: espresso
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message = FALSE, cache = F)
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+library(psych)
+library(vcd)
+library(ggpubr)
+library(corrplot)
+```
+
+
+```{r data prep, echo=FALSE, warning=FALSE}
+setwd("/home/andrew/Dropbox/MCSC/polukhina/")
+data_noSD <- read.csv("FibroМax-Без-СД-все-есть.csv")
+data_noSD2 <- read.csv("FibroМax-Без-СД.csv")
+data_SD <- read.csv("FibroМax-СД.csv")
+data_noSD$SD <- rep("0", nrow(data_noSD))
+data_noSD2$SD <- rep("0", nrow(data_noSD2))
+data_SD$SD <- rep("1", nrow(data_SD))
+data_all <- rbind(data_SD, data_noSD)
+#data_all <- rbind(data_SD, data_noSD2)
+
+# factors: F, A, S , N, SD
+data_all$F <- factor(data_all$F, levels = c("0", "1", "2", "3", "4"))
+data_all$A <- factor(data_all$A, levels = c("0", "1", "2", "3"))
+data_all$S <- factor(data_all$S, levels = c("0", "1", "2", "3"))
+data_all$N <- factor(data_all$N, levels = c("0", "1", "2"))
+
+data_all$давность.СД <- factor(data_all$давность.СД, levels=c("0", "1", "2"))
+data_all$alcohol <- factor(data_all$alcohol, levels=c("0", "1"))
+data_all$X0.F_1.M <- factor(data_all$X0.F_1.M, levels=c("0", "1"))
+data_all$CAP.S <- factor(data_all$CAP.S, levels=c("0", "1", "2", "3"))
+
+data_all$Fscan <- factor(data_all$Fscan, levels=c("0", "1", "2", "3", "4"))
+data_all$Hb1Ac <- factor(data_all$Hb1Ac, levels=c("0", "1"))
+data_all$liver.biopsy <- factor(data_all$liver.biopsy, levels=c("0", "1", "3"))
+data_all$SD <- factor(data_all$SD)
+data_all$X0.F_1.M <- ifelse(data_all$X0.F_1.M == 0, "f", "m")
+data_all$X0.F_1.M <- as.factor(data_all$X0.F_1.M)
+
+```
+
+# Описательная статистика
+
+## Все данные
+
+### Таблицы
+
+#### Без СД
+
+```{r description1, echo=FALSE, warning=FALSE}
+des_stat <- describeBy(data_all[,!sapply(data_all, is.factor)], group = data_all$SD, skew=F, quant=c(.5), IQR=TRUE, check=T)
+#sapply(data_all, is.factor)
+#select(data_all, -id_FM)
+kable(des_stat$`0`, "html", col.names = c(names(des_stat$`1`[1:9]), "median")) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+#### С СД
+
+```{r description2, echo=FALSE, warning=FALSE}
+kable(des_stat$`1`, "html", col.names = c(names(des_stat$`1`[1:9]), "median")) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+### Описательная статистика - боксплоты
+
+```{r, include=FALSE}
+nums <- data_all[,!sapply(data_all, is.factor)]
+nums$SD <- data_all$SD
+```
+
+
+#### Рост
+
+```{r boxplot, echo=F}
+ggplot(data_all, aes(SD,Growth))+geom_boxplot(notch = T)+ylab("Рост")+xlab("СД")
+```
+
+#### Weight
+
+```{r, echo=FALSE, warning=FALSE}
+ggplot(data_all, aes(SD, Weight))+geom_boxplot(notch = T)+ylab("Вес")+xlab("СД")
+```
+
+#### BMI
+
+```{r, echo=FALSE}
+ggplot(data_all, aes(SD, BMI))+geom_boxplot(notch = T)+ylab("ИМТ")+xlab("СД")
+```
+
+#### Возраст
+
+```{r, echo=FALSE}
+ggplot(data_all, aes(SD, Age))+geom_boxplot(notch = T)+geom_jitter()+ylab("Возраст")+xlab("СД")
+```
+
+#### GG
+
+```{r}
+ggplot(data_all, aes(SD, GG))+geom_boxplot(notch = T)+ylab("GG")+xlab("СД")
+```
+
+#### A2M
+
+```{r}
+ggplot(data_all, aes(SD, A2M))+geom_boxplot(notch = T)+ylab("A2M")+xlab("СД")
+```
+
+#### AA1
+
+```{r}
+ggplot(data_all, aes(SD, AA1))+geom_boxplot(notch = T)+ylab("AA1")+xlab("СД")
+```
+
+#### BB
+
+```{r}
+ggplot(data_all, aes(SD, BB))+geom_boxplot(notch = T)+ylab("BB")+xlab("СД")
+```
+
+#### GGT
+
+```{r}
+ggplot(data_all, aes(SD, GGT))+geom_boxplot(notch = T)+ylab("GGT")+xlab("СД")
+```
+
+#### ALT
+
+```{r}
+ggplot(data_all, aes(SD, ALT))+geom_boxplot(notch = T)+ylab("ALT")+xlab("СД")
+```
+
+#### AST
+
+```{r}
+ggplot(data_all, aes(SD, AST))+geom_boxplot(notch = T)+ylab("AST")+xlab("СД")
+```
+
+#### Glu
+
+```{r}
+ggplot(data_all, aes(SD, Glu))+geom_boxplot(notch = T)+ylab("Glucose")+xlab("СД")
+```
+
+#### Cholesterol
+
+```{r}
+ggplot(data_all, aes(SD, Cholesterol))+geom_boxplot(notch = T)+ylab("Cholesterol")+xlab("СД")
+```
+
+#### Trigl
+
+```{r}
+ggplot(data_all, aes(SD, Trigl))+geom_boxplot(notch = T)+ylab("Trigl")+xlab("СД")
+```
+
+#### F1
+
+```{r}
+ggplot(data_all, aes(SD, F1))+geom_boxplot(notch = F)+ylab("F1")+xlab("СД")#+scale_fill_discrete(name='Пол', labels=c('Ж', 'М'))
+```
+
+#### F1 + пол
+
+```{r}
+#ggplot(data_all, aes(SD, F1))+geom_boxplot(notch = T, aes(fill=X0.F_1.M))+ylab("F1")+xlab("СД")
+ggplot(filter(data_all, !is.na(X0.F_1.M)), aes(SD, F1))+geom_boxplot(notch = F, aes(fill=X0.F_1.M))+ylab("F1")+xlab("СД")+scale_fill_discrete(name='Пол', labels=c('Ж', 'М'))
+```
+
+#### A1
+
+```{r}
+ggplot(data_all, aes(SD, A1))+geom_boxplot(notch = T)+ylab("A1")+xlab("СД")
+```
+
+#### S1
+
+```{r}
+ggplot(data_all, aes(SD, S1))+geom_boxplot(notch = T)+ylab("S1")+xlab("СД")
+```
+
+#### N1
+
+```{r}
+ggplot(data_all, aes(SD, N1))+geom_boxplot(notch = T)+ylab("N1")+xlab("СД")
+```
+
+#### F.kPa
+
+```{r}
+ggplot(data_all, aes(SD, F.kPa))+geom_boxplot(notch = T)+ylab("F.kPa")+xlab("СД")
+```
+
+#### CAP
+
+```{r}
+ggplot(data_all, aes(SD, CAP))+geom_boxplot(notch = T)+ylab("CAP")+xlab("СД")
+```
+
+#### IQR
+
+```{r}
+ggplot(data_all, aes(SD, IQR))+geom_boxplot(notch = T)+ylab("")+xlab("СД")
+```
+
+#### Plt
+
+```{r}
+ggplot(data_all, aes(SD,Plt ))+geom_boxplot(notch = T)+ylab("Plt")+xlab("СД")
+```
+
+#### Протромбин
+
+```{r}
+ggplot(data_all, aes(SD, prothrombin))+geom_boxplot(notch = T)+ylab("Prothrombin")+xlab("СД")
+```
+
+#### Стеатоз
+
+```{r, include=FALSE}
+ggplot(data_all, aes(SD, steatosis))+geom_boxplot(notch = T)+ylab("steatosis")+xlab("СД")
+```
+
+#### Спленомегалия
+
+```{r, include=FALSE}
+ggplot(data_all, aes(SD, splenomegaly))+geom_boxplot(notch = T)+ylab("splenomegaly")+xlab("СД")
+```
+
+#### терапия.СД
+
+```{r, include=FALSE}
+ggplot(data_all, aes(SD, терапия.СД))+geom_boxplot(notch = T)+ylab("терапия.СД")+xlab("СД")
+```
+
+### Результаты теста Краскела-Уоллиса
+
+```{r}
+#nums.names <- c(2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,19,21,23,26,28,29, 30)
+nums.names <- names(nums)[-26]
+kws <- lapply(nums.names, function(x){kruskal.test(data_all[,x], data_all$SD)})
+#kws <- lapply(nums.names, function(x){kruskal.test(data_all[,x], data_all$SD)})
+pval <- c()
+statistic <- c()
+for (i in c(1 : length(kws))){
+  pval <- c(pval, kws[[i]]$p.value)
+  statistic <- c(statistic, kws[[i]]$statistic)
+}
+kws.df <- data.frame("variable"=nums.names, "statistic"=statistic, "pval"=pval, "df"=rep(1, length(kws)))
+kws.df$significant <- ifelse(kws.df$pval < .05, "yes", "no")
+
+kable(kws.df, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+## Без самых старых (> 55 лет)
+
+
+```{r}
+data_age <- filter(data_all, Age < 55 & SD == 1) %>% bind_rows(filter(data_all, SD == 0))
+```
+
+
+### Таблицы
+
+#### Без СД
+
+```{r description3, echo=FALSE, warning=FALSE}
+des_stat <- describeBy(data_age[,!sapply(data_age, is.factor)], group = data_age$SD, skew=F, quant=c(.5), IQR=TRUE, check=T)
+#sapply(data_age, is.factor)
+#select(data_age, -id_FM)
+kable(des_stat$`0`, "html", col.names = c(names(des_stat$`1`[1:9]), "median")) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+#### С СД
+
+```{r description4, echo=FALSE, warning=FALSE}
+kable(des_stat$`1`, "html", col.names = c(names(des_stat$`1`[1:9]), "median")) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+### Описательная статистика - боксплоты
+
+```{r, include=FALSE}
+nums <- data_age[,!sapply(data_age, is.factor)]
+nums$SD <- data_age$SD
+```
+
+
+#### Рост
+
+```{r , echo=F}
+ggplot(data_age, aes(SD,Growth))+geom_boxplot(notch = F)+ylab("Рост")+xlab("СД")
+```
+
+#### Weight
+
+```{r, echo=FALSE, warning=FALSE}
+ggplot(data_age, aes(SD, Weight))+geom_boxplot(notch = F)+ylab("Вес")+xlab("СД")
+```
+
+#### BMI
+
+```{r, echo=FALSE}
+ggplot(data_age, aes(SD, BMI))+geom_boxplot(notch = F)+ylab("ИМТ")+xlab("СД")
+```
+
+#### Возраст
+
+```{r, echo=FALSE}
+ggplot(data_age, aes(SD, Age))+geom_boxplot(notch = F)+geom_jitter()+ylab("Возраст")+xlab("СД")
+```
+
+#### GG
+
+```{r}
+ggplot(data_age, aes(SD, GG))+geom_boxplot(notch = F)+ylab("GG")+xlab("СД")
+```
+
+#### A2M
+
+```{r}
+ggplot(data_age, aes(SD, A2M))+geom_boxplot(notch = F)+ylab("A2M")+xlab("СД")
+```
+
+#### AA1
+
+```{r}
+ggplot(data_age, aes(SD, AA1))+geom_boxplot(notch = F)+ylab("AA1")+xlab("СД")
+```
+
+#### BB
+
+```{r}
+ggplot(data_age, aes(SD, BB))+geom_boxplot(notch = F)+ylab("BB")+xlab("СД")
+```
+
+#### GGT
+
+```{r}
+ggplot(data_age, aes(SD, GGT))+geom_boxplot(notch = F)+ylab("GGT")+xlab("СД")
+```
+
+#### ALT
+
+```{r}
+ggplot(data_age, aes(SD, ALT))+geom_boxplot(notch = F)+ylab("ALT")+xlab("СД")
+```
+
+#### AST
+
+```{r}
+ggplot(data_age, aes(SD, AST))+geom_boxplot(notch = F)+ylab("AST")+xlab("СД")
+```
+
+#### Glu
+
+```{r}
+ggplot(data_age, aes(SD, Glu))+geom_boxplot(notch = F)+ylab("Glucose")+xlab("СД")
+```
+
+#### Cholesterol
+
+```{r}
+ggplot(data_age, aes(SD, Cholesterol))+geom_boxplot(notch = F)+ylab("Cholesterol")+xlab("СД")
+```
+
+#### Trigl
+
+```{r}
+ggplot(data_age, aes(SD, Trigl))+geom_boxplot(notch = F)+ylab("Trigl")+xlab("СД")
+```
+
+#### F1
+
+```{r}
+ggplot(data_age, aes(SD, F1))+geom_boxplot(notch = F)+ylab("F1")+xlab("СД")#+scale_fill_discrete(name='Пол', labels=c('Ж', 'М'))
+```
+
+#### F1 + пол
+
+```{r}
+ggplot(filter(data_age, !is.na(X0.F_1.M)), aes(SD, F1))+geom_boxplot(notch = F, aes(fill=X0.F_1.M))+ylab("F1")+xlab("СД")+scale_fill_discrete(name='Пол', labels=c('Ж', 'М'))
+```
+
+#### A1
+
+```{r}
+ggplot(data_age, aes(SD, A1))+geom_boxplot(notch = F)+ylab("A1")+xlab("СД")
+```
+
+#### S1
+
+```{r}
+ggplot(data_age, aes(SD, S1))+geom_boxplot(notch = F)+ylab("S1")+xlab("СД")
+```
+
+#### N1
+
+```{r}
+ggplot(data_age, aes(SD, N1))+geom_boxplot(notch = F)+ylab("N1")+xlab("СД")
+```
+
+#### F.kPa
+
+```{r}
+ggplot(data_age, aes(SD, F.kPa))+geom_boxplot(notch = F)+ylab("F.kPa")+xlab("СД")
+```
+
+#### CAP
+
+```{r}
+ggplot(data_age, aes(SD, CAP))+geom_boxplot(notch = F)+ylab("CAP")+xlab("СД")
+```
+
+#### IQR
+
+```{r}
+ggplot(data_age, aes(SD, IQR))+geom_boxplot(notch = F)+ylab("")+xlab("СД")
+```
+
+#### Plt
+
+```{r}
+ggplot(data_age, aes(SD,Plt ))+geom_boxplot(notch = F)+ylab("Plt")+xlab("СД")
+```
+
+#### Протромбин
+
+```{r}
+ggplot(data_age, aes(SD, prothrombin))+geom_boxplot(notch = F)+ylab("Prothrombin")+xlab("СД")
+```
+
+#### Стеатоз
+
+```{r, include=FALSE}
+ggplot(data_age, aes(SD, steatosis))+geom_boxplot(notch = F)+ylab("steatosis")+xlab("СД")
+```
+
+#### Спленомегалия
+
+```{r, include=FALSE}
+ggplot(data_age, aes(SD, splenomegaly))+geom_boxplot(notch = F)+ylab("splenomegaly")+xlab("СД")
+```
+
+#### терапия.СД
+
+```{r, include=FALSE}
+ggplot(data_age, aes(SD, терапия.СД))+geom_boxplot(notch = F)+ylab("терапия.СД")+xlab("СД")
+```
+
+### Результаты теста Краскела-Уоллиса 
+
+
+```{r}
+#nums.names <- c(2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,19,21,23,26,28,29, 30)
+nums.names <- names(nums)[-26]
+kws.age <- lapply(nums.names, function(x){kruskal.test(data_age[,x], data_age$SD)})
+#kws <- lapply(nums.names, function(x){kruskal.test(data_all[,x], data_all$SD)})
+pval.age <- c()
+statistic.age <- c()
+for (i in c(1 : length(kws.age))){
+  pval.age <- c(pval.age, kws.age[[i]]$p.value)
+  statistic.age <- c(statistic.age, kws.age[[i]]$statistic)
+}
+kws.df.age <- data.frame("variable"=nums.names, "statistic"=statistic.age, "pval"=pval.age, "df"=rep(1, length(kws.age)))
+kws.df.age$significant <- ifelse(kws.df.age$pval < .05, "yes", "no")
+#kws.df.age
+kable(kws.df.age, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+## Описательная статистика - трудоспособный возраст (от 18 до 60 лет включительно)
+
+```{r, echo=FALSE}
+age_n <- data_all %>% filter(Age>=18 & Age <=60) %>% group_by(SD) %>% summarise(n=n())
+age_n$group <- rep("трудоспособные", 2)
+
+age_n2 <- data_all %>% filter(Age < 18 | Age > 60) %>% group_by(SD) %>% summarise(n=n())
+age_n2$group <- rep("нетрудоспособные", 2)
+
+sd1 <- data_all %>% filter(SD == 1) %>% nrow()
+sd0 <- data_all %>% filter(SD == 0) %>% nrow()
+
+age_n <- rbind(age_n, age_n2)
+age_n$group_size <- c(sd0, sd1, sd0, sd1)
+age_n$percent <- age_n$n / age_n$group_size
+
+kable(age_n, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+**На графике**
+
+```{r, echo=FALSE}
+ggplot(age_n, aes(SD, n))+geom_bar(stat = 'identity', position = "fill", aes(fill=group))+ylab("доля")+xlab("СД")+scale_fill_discrete(name="")
+```
+
+## Описательная статистика - число больных в группах менее и более 50 лет
+
+```{r}
+less50 <- data_all %>% filter(Age <= 50) %>% group_by(SD) %>% summarise(n=n())
+more50 <- data_all %>% filter(Age > 50) %>% group_by(SD) %>% summarise(n=n())
+all50 <- rbind(less50, more50)
+all50$group <- c("<50", "<50", ">50", ">50")
+all50$group_size <- c(sd0, sd1, sd0, sd1)
+all50$percent <- all50$n / all50$group_size
+
+kable(all50, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+**На графике**
+
+```{r}
+ggplot(all50, aes(SD, n))+geom_bar(stat="identity", position="fill", aes(fill=group))+xlab("СД")+ylab("доля")+scale_fill_discrete(name="")
+```
+
+
+## Описательная статистика - число больных в интервале
+
+### График
+
+```{r, echo=FALSE}
+ggplot(data_all, aes(SD, Age))+geom_boxplot()+geom_jitter(shape=1)+xlab("СД")+ylab("Возраст")
+```
+
+### Квантили
+
+**Группа без SD**
+
+```{r, echo=FALSE}
+quantile(data_all[data_all$SD=="0",]$Age)
+
+```
+
+Число больных в возрасте между 38.75 и 57.25 - `r nrow(data_all %>% filter(Age<=57.25&Age>=38.75&SD=="0"))`. Это половина всех наблюдений. Еще четверть больных в возрасте менее 38.75 и столько же в возрасте более 57.25.
+
+**Группа с SD**
+
+```{r, echo=FALSE}
+quantile(data_all[data_all$SD=="1",]$Age)
+
+```
+
+Число больных в возрасте между 52 и 63.25 - `r nrow(data_all %>% filter(Age<=63.25&Age>=52&SD=="1"))`.
+
+## Сходимость методов (F)
+
+### По всей выборке
+
+**Таблица сопряженности**
+
+```{r, echo=FALSE}
+table(data_all[,c(16,24)])
+
+```
+
+**График сопряженности**
+
+На графике видны отклонения ожидаемых частот от наблюдаемых величин (deviations from independence). Высота прямоугольника показывает абсолютную величину этого отклонения, а положение — знак отклонения. Чем выше столбики (высота над линией) по диагонали графика, тем сильнее выражена связь между двумя факторныим величинами. 
+
+```{r, echo=FALSE}
+assocplot(table(data_all[,c(16,24)]))
+
+```
+
+**Тест сопряженности Крамера**
+
+```{r, echo=FALSE}
+assocstats(table(data_all[,c(16,24)]))
+```
+
+Связь слабая (0.442), достоверная при уровне значимости р=3.2196e-15
+
+## Сопряженность в подгруппах: ИМТ до 25
+
+Таблица сопряженности
+
+```{r, echo=FALSE}
+bmi25 <- data_all %>% filter(BMI <= 25)
+cont.table.bmi25 <- table(bmi25[,c(16,24)])
+cont.table.bmi25 <- cont.table.bmi25[,c(1,2,5)]
+cont.table.bmi25
+```
+
+```{r, echo=FALSE}
+assocplot(cont.table.bmi25)
+```
+
+```{r, echo=FALSE}
+s <- summary(assocstats(cont.table.bmi25))
+s$object
+```
+
+Связь сильная, отличия недостоверны
+
+## Сопряженность в подгруппах: ИМТ до 30
+
+Таблица сопряженности
+
+```{r, echo=FALSE}
+bmi30 <- data_all %>% filter(BMI <= 30)
+cont.table.bmi30 <- table(bmi30[,c(16,24)])
+#cont.table.bmi25 <- cont.table.bmi25[,c(1,2,5)]
+cont.table.bmi30
+```
+
+```{r, echo=FALSE}
+assocplot(cont.table.bmi30)
+```
+
+```{r, echo=FALSE}
+s30 <- summary(assocstats(cont.table.bmi30))
+s30$object
+```
+
+Связь средней средней силы (0.561), достоверная при уровне значимости р=1.6052e-07
+
+## Сопряженность в подгруппах: ИМТ более 30
+
+Таблица сопряженности
+
+```{r, echo=FALSE}
+bmi31 <- data_all %>% filter(BMI > 30)
+cont.table.bmi31 <- table(bmi31[,c(16,24)])
+#cont.table.bmi25 <- cont.table.bmi25[,c(1,2,5)]
+cont.table.bmi31
+```
+
+```{r, echo=FALSE}
+assocplot(cont.table.bmi31)
+```
+
+```{r, echo=FALSE}
+s31 <- summary(assocstats(cont.table.bmi31))
+s31$object
+```
+
+Связь слабая (0.398), при уровне значимости р=2.3452e-07
+
+
+
+# Регрессия
+
+## Технические часть - можно не смотреть
+
+### Проверка корреляции среди предикторов
+
+```{r}
+corrs <- round(cor(data_all[,2:14], use = 'na.or.complete', method = 'spearman'),2)
+kable(corrs, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+
+```{r}
+corrplot(corrs, method = 'color')
+```
+
+Исключаем Weight, Growth, ALT
+
+```{r}
+corrs <- round(cor(data_all[,c(4:9, 11:14)], use = 'na.or.complete', method = 'spearman'),2)
+
+kable(corrs, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+
+```{r}
+corrplot(corrs, method = 'color')
+```
+
+С этим можно работать.
+
+
+### Распределения предикторов
+
+```{r, fig.width=10, fig.height=8, eval=F}
+data_F1 <- data_all[,c(4:9, 11:15)]
+hist.list <- apply(data_F1, 2, function(x){ggplot(data_F1, aes(x))+geom_histogram(bins=50)})
+for (i in c(1:11)){hist.list[[i]] <- hist.list[[i]]+xlab(names(hist.list[i]))+ylab("")}
+ggarrange(plotlist = hist.list)
+```
+
+##  Модель для *F1*
+
+### модель с трансформацией BB, GGT и GG
+
+```{r, cache=FALSE}
+data_F1 <- data_all[,c(4:9, 11:15)]
+fit.trans <- lm(F1 ~ A2M+AA1+I(log2(GG))+I(log2(BB))+I(log2(GGT)), data=data_F1)
+summary(fit.trans)
+```
+
+#### диагностика
+
+```{r, cache=F}
+layout(matrix(c(1,2,3,4),2,2))
+plot(fit.trans)
+```
+
+#### корреляция предсказаний модели и наблюдений
+
+```{r}
+absent <- c(9, 21, 80, 101, 137)
+corr.trans <- cor(data_F1$F1[c(1:8,10:20,22:79, 80, 81:100,102:136,138:148)], predict(fit.trans))
+
+cor.t <- cor.test(data_F1$F1[c(1:8,10:20,22:79, 80, 81:100,102:136,138:148)], predict(fit.trans))
+
+plot(data_F1$F1[c(1:8,10:20,22:79, 80, 81:100,102:136,138:148)], predict(fit.trans), main=paste("r = ", round(corr.trans, 3), "[ 95%CI = ", round(cor.t$conf.int[1], 3), "-", round(cor.t$conf.int[2], 3), " ]",  sep=""), xlab = "observed F1", ylab="predicted F1")
+
+
+
+#qplot(x=data_F1$F1[c(1:8,10:20,22:100,102:136,138:148)], y=predict(fit.trans), geom="point")+geom_smooth(model="lm")
+```
+
+### Итоговая формула:
+
+$F1 = -0.19 + 0.18\cdot A2M - 0.20\cdot AA1 - 0.09\cdot log{_2}(GG) + 0.08\cdot log{_2}(BB) + 0.04\cdot log{_2}(GGT)$
+
+
+```{r, eval=F}
+library(caret)
+library(kernlab)
+data_F1_noNA <- na.omit(data_F1)
+inTrain <- createFolds(y = data_F1_noNA$F1, list=F, k=4)
+training <- data_F1_noNA[inTrain, ]
+testing <- data_F1_noNA[-inTrain,]
+
+modelFit <- train(F1 ~ ., data=training, method='glm')
+modelFit
+modelFit$finalModel
+
+
+modelFit2 <- train(F1 ~ A2M+AA1+I(log2(GG))+I(log2(BB))+I(log2(GGT)), data=training, method='glm')
+modelFit2
+modelFit2$finalModel
+predictions <- predict(modelFit2, newdata=testing)
+
+```
+
+
+## A1
+
+### простая модель
+
+```{r}
+data_A1 <- data_all[,c(4:9, 11:14, 17)]
+
+fit.A1 <- lm(A1 ~ A2M+AA1+BB+GGT+AST, data=data_A1)
+summary(fit.A1)
+
+```
+
+### модель с трансформацией
+
+```{r}
+fit.A1.trans <- lm(A1 ~ A2M+I(log2(BB))+I(log2(GGT))+I(log2(AST)), data=data_A1)
+summary(fit.A1.trans)
+
+```
+
+##### diagnostics
+
+```{r}
+layout(matrix(c(1,2,3,4),2,2))
+
+plot(fit.A1.trans)
+```
+
+
+#### корреляция предсказаний модели с трансформацией и наблюдений
+
+```{r}
+corr.trans <- cor(data_A1$A1[c(1:8,10:20,22:100,102:136,138:148)], predict(fit.A1.trans))
+plot(data_A1$A1[c(1:8,10:20,22:100,102:136,138:148)], predict(fit.A1.trans), main=paste("r = ", round(corr.trans, 3), sep=""), xlab = "observed A1", ylab="predicted A1")
+```
+
+### Формула:
+
+$A1 = A2M+log{_2}(BB)+log{_2}(GGT)+log{_2}(AST)$
+
+## S1
+
+### Все предикторы
+
+```{r}
+data_S1 <- data_all[,c(4:9, 11:14, 19)]
+
+fit.S1.all <- lm(S1 ~ BMI+A2M+BB+GGT+AA1+AST+Glu+Cholesterol+Trigl, data=data_S1)
+
+summary(fit.S1.all)
+```
+
+### Только значимые
+
+```{r}
+fit.S1 <- lm(S1 ~ BMI+A2M+GGT+AA1+Glu+Cholesterol+Trigl, data=data_S1)
+summary(fit.S1)
+```
+
+### С трансформацией
+
+```{r}
+fit.S1.trans <- lm(S1 ~ I(log2(BMI))+A2M+I(log2(GGT))+AA1+Glu+Cholesterol+Trigl, data=data_S1)
+summary(fit.S1.trans)
+```
+
+#### Корреляция с наблюдениями
+
+```{r}
+corr.trans <- cor(data_S1$S1[c(1:6,8,10:20,22:45, 47:52, 54:100,102:116, 118:136,138:148)], predict(fit.S1.trans))
+plot(data_S1$S1[c(1:6,8,10:20,22:45, 47:52, 54:100,102:116, 118:136,138:148)], predict(fit.S1.trans), main=paste("r = ", round(corr.trans, 3), sep=""), xlab = "observed S1", ylab="predicted S1")
+```
+
+### Итоговая формула:
+
+$S1 = log{_2}(BMI)+A2M+log{_2}(GGT)+AA1+Glu+Cholesterol+Trigl$
+
+## N1
+
+### Все предикторы
+
+```{r}
+data_N1 <- data_all[,c(4:9, 11:14, 21)]
+
+fit.N1.all <- lm(N1 ~ BMI+A2M+BB+GGT+AA1+AST+Glu+Cholesterol+Trigl, data=data_N1)
+
+summary(fit.N1.all)
+```
+
+
+### Только значимые
+
+```{r}
+fit.N1 <- lm(N1 ~ I(log2(Glu)) + I(log2(Trigl)), data=data_N1)
+summary(fit.N1)
+```
+
+```{r}
+corr.trans <- cor(data_N1$N1[c(1:6,8,10:20,22:45, 47:52, 54:100,102:116, 118:148)], predict(fit.N1))
+plot(data_N1$N1[c(1:6,8,10:20,22:45, 47:52, 54:100,102:116, 118:148)], predict(fit.N1), main=paste("r = ", round(corr.trans, 3), sep=""), xlab = "observed N1", ylab="predicted N1")
+```

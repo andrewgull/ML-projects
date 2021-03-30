@@ -1,0 +1,590 @@
+---
+title: "Эффективность Ангиодина (?)"
+author: "A. G."
+date: "Feb 11, 2018"
+output:
+  html_document:
+    fig_caption: yes
+    highlight: espresso
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#suppressPackageStartupMessages()
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+#library(dplyr)
+#library(pROC)
+#library(ggplot2)
+#library(ROCR)
+#library(cvAUC)
+#library(car)
+#library(caret)
+#library(readxl)
+#library(psych)
+library(vcd)
+```
+
+
+```{r, echo=FALSE, cache=T}
+# df <- read_excel("table.xlsx", sheet="в зависимости от этиологии")
+df <- read.delim("~/Dropbox/MCSC/sandler/table.tsv", na="", header=T)
+cols <- colnames(df[,c(1:7,11,12)])
+df[cols] <- lapply(df[cols], factor)
+# cols.ord <- cols[c(2,4,5,7)]
+# df[cols.ord] <- lapply(df[cols.ord], factor(levels=c("0", "1", "2", "3", "4")))
+
+# des.stat <- describe(df)
+# kable(des.stat, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+# Анализ ассоциаций
+
+## Ассоциация FWF ~ FBs
+
+Насколько FWF (Ангиодин) соответсвует "золотому стандарту" FBs (биопсия) в определении стадии фиброза?
+
+### Таблица сопряженности (FWF в строках и FBs в столбцах)
+
+```{r , echo=FALSE, cache=T}
+#table(df[,c(2,5)])
+kable(table(df[,c(2,5)]), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+### Точный тест Фишера
+
+```{r, echo=FALSE, cache=TRUE}
+fisher.test(table(df$FWF, df$FBs), simulate.p.value = T, B = 10000)# H0 rejected
+```
+
+Поскольку p-уровень значимости (p-value) значительно ниже 0.01, 
+мы можем отвергнуть нулевую гипотезу о независимости FWF и FBs
+
+### График сопряженности FWF и FBs
+
+На графике видны отклонения ожидаемых частот от наблюдаемых величин. Высота прямоугольника показывает абсолютную величину этого отклонения, а положение — знак отклонения. Отчетливо видно, что для всех стадий FWF характерна та же стадия, определенная по FBs.
+
+```{r, echo=F, cache=T}
+assocplot(table(df[,c(2,5)]), col=c("firebrick3", "light blue"), main = "График сопряженности", xlab="FWF", ylab="FBs")
+```
+
+### Тест Крамера на силу ассоциации двух факторов
+
+```{r, echo=F, cache=T}
+assoc.test <- assocstats(table(df[,c(2,5)]))
+assoc.test
+#kable(assoc.test, "html") %>%   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+Тест Крамера показывает, что уровень ассоциации равен `r assoc.test$cramer`. Это означает, что связь сильная.
+
+## Ассоциация SWS ~ SBs
+
+Насколько SWS (Ангиодин) соответсвует "золотому стандарту" SBs (биопсия) в определении стадии стеатоза?
+
+### Таблица сопряженности (в строках SWS, в столбцах SBs)
+
+```{r, echo=FALSE, cache=T}
+kable(table(df[,c(3,6)]), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+### Точный тест Фишера
+
+```{r, echo=FALSE, cache=TRUE}
+fisher.test(table(df$SWS, df$SBs), simulate.p.value = T, B = 10000) # H0 rejected
+```
+
+Поскольку p-уровень значимости (p-value) значительно ниже 0.01, 
+мы можем отвергнуть нулевую гипотезу о независимости SWS и SBs
+
+### График сопряженности SWS и SBs
+
+На графике видны отклонения ожидаемых частот от наблюдаемых величин. Высота прямоугольника показывает абсолютную величину этого отклонения, а положение — знак отклонения. Отчетливо видно, что для всех стадий SWS (кроме второй) характерна та же стадия, определенная по SBs. При второй стадии по SBs в значительном количестве случаев SWS показывает нам третью стадию.
+
+```{r, echo=F, cache=T}
+assocplot(table(df$SWS, df$SBs), col=c("firebrick3", "light blue"), main = "График сопряженности", xlab="SWS", ylab="SBs")
+```
+
+### Тест Крамера на силу ассоциации двух факторов
+
+```{r, echo=F, cache=T}
+assoc.test2 <- assocstats(table(df[,c(3,6)]))
+assoc.test2
+#kable(assoc.test, "html") %>%   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+Тест Крамера показывает, что уровень ассоциации равен `r assoc.test2$cramer`. Это означает, что связь между SBs и SWS средняя.
+
+## Ассоциация FScan ~ FBs 
+
+### Таблица сопряженности (Fscan в строках, FBs в столбцах)
+```{r, echo=F, cache=T}
+kable(table(df$Fscan, df$FBs), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+
+### Тест Фишера
+
+```{r, echo=F, cache=T}
+fisher.test(table(df$Fscan, df$FBs), simulate.p.value = T, B = 10000)
+```
+p-уровень значимости ниже 0.01, поэтому мы отвергаем нулевую гипотезу о независимости FScan и SBs
+
+### График сопряженности 
+
+```{r, echo=F, cache=T}
+assocplot(table(df$Fscan, df$FBs), col=c("firebrick3", "light blue"), main = "График сопряженности", xlab="Fscan", ylab="FBs")
+```
+
+
+### Тест Крамера на силу ассоциации
+```{r, echo=F, cache=T}
+assoc.test3 <- assocstats(table(df$Fscan, df$FBs))
+assoc.test3
+```
+
+Сила ассоциации между FScan и SBs средняя (V=`r assoc.test3$cramer`)
+
+## Ассоциация FWF ~ SBs
+
+### Таблица сопряженности (FWF в строках, SBs в столбцах)
+
+```{r, echo=F, cache=T}
+kable(table(df$FWF, df$SBs), "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+### Тест Фишера
+
+```{r, echo=F, cache=T}
+fisher.test(table(df$FWF, df$SBs), simulate.p.value = T, B = 10000)
+```
+p-уровень значимости выше 0.05, поэтому мы не можем отвергнуть нулевую гипотезу о независимости FWF и SBs.
+
+## Ассоциация FScan ~ FWF
+
+### Таблица сопряженности (Fscan в строках, FWF в столбцах)
+
+```{r, echo=F, cache=T}
+table(df$Fscan, df$FWF)
+```
+
+
+### Тест Фишера
+
+```{r, echo=F, cache=T}
+fisher.test(table(df$FWF, df$Fscan), simulate.p.value = T, B = 10000)
+```
+p-уровень значимости значительно ниже 0.01, поэтому мы отвергаем нулевую гипотезу о независимости FScan и FWF
+
+### График сопряженности
+
+```{r, echo=F, cache=T}
+assocplot(table(df$Fscan, df$FWF), col=c("firebrick3", "light blue"), main = "График сопряженности", xlab="Fscan", ylab="FWF")
+```
+
+### Тест Крамера на силу ассоциации
+```{r, echo=F, cache=T}
+assoc.test5 <- assocstats(table(df$Fscan, df$FWF))
+assoc.test5
+```
+Сила ассоциации средняя (V=`r assoc.test5$cramer`)
+
+## Ассоциация SBs и Fscan
+
+### Таблица сопряженности (SBs в строках, Fscan в столбцах)
+
+```{r, echo=F, cache=T}
+table(df$SBs, df$Fscan)
+```
+
+
+### Тест Фишера
+
+```{r, echo=F, cache=T}
+fisher.test(table(df$SBs, df$Fscan), simulate.p.value = T, B = 10000)
+```
+p-уровень значимости значительно ниже 0.01, поэтому мы отвергаем нулевую гипотезу о независимости FScan и SBs
+
+### График сопряженности
+
+```{r, echo=F, cache=T}
+assocplot(table(df$SBs, df$Fscan), col=c("firebrick3", "light blue"), main = "График сопряженности", xlab="Fscan", ylab="FWF")
+```
+
+### Тест Крамера на силу ассоциации
+```{r, echo=F, cache=T}
+assoc.test6 <- assocstats(table(df$SBs, df$Fscan))
+assoc.test6
+```
+Сила ассоциации малая (V=`r assoc.test6$cramer`)
+
+
+# Регрессионный анализ
+
+## Биномиальная логистическая регрессия
+ 
+### Определение 0 и 1 стадий фиброза (FBs - FWF)
+
+#### Модель: FBs ~ FWF
+
+Предикторы, кроме FWF0, статистически незначимы!
+
+```{r, echo=F, cache=T}
+df.F01 <- df[df$FBs == 0 | df$FBs == 1, c("FWF", "FBs")] 
+df.F01$FWF.true <- ifelse(df.F01$FWF == df.F01$FBs, "yes", "no")
+df.F01$FWF.true <- as.factor(df.F01$FWF.true)
+f1 <- glm(FWF.true ~ FWF, data=df.F01 ,family = "binomial")
+summary(f1)
+```
+
+#### ROC-кривая
+
+```{r, echo=F, cache=T}
+library(ROCR)
+df.F01$вероятность <- predict(f1, type="response")
+pred_f1 <- prediction(df.F01$вероятность, df.F01$FWF.true)
+perf_f1 <- performance(pred_f1, "tpr", "fpr")
+plot(perf_f1, colorize=T, lwd=3)
+auc1 <- performance(pred_f1, measure = "auc")
+acc1 <- performance(pred_f1, measure = "acc")
+
+```
+
+Площадь под кривой AUC=`r auc1@y.values[1]`
+
+#### Кривые специфичности, чувствительности и аккуратности модели
+
+```{r, echo=F, cache=T}
+perf3 <- performance(pred_f1, x.measure = "cutoff", measure="spec")
+perf4 <- performance(pred_f1, x.measure = "cutoff", measure="sens")
+perf5 <- performance(pred_f1, x.measure = "cutoff", measure="acc")
+plot(perf3, col = "red", lwd =2)
+plot(add=T, perf4 , col = "green", lwd =2)
+plot(add=T, perf5, lwd =2)
+legend(x = 0.6,y = 0.23, c("спец.", "чув.", "точн."),lty = 1, col =c('red', 'green', 'black'), bty = 'n', cex = 0.8, lwd = 2)
+abline(v= 0.8372, lwd = 1, lty=6)
+```
+
+#### Аккуратность, чувствительность и специфичность выбранной модели
+
+```{r, echo=F, cache=T, message=F, warning=F}
+set.seed(112)
+library(caret)
+f1.t <- train(FWF.true ~ FWF, data=df.F01, method="glm")
+acc <- f1.t$results 
+# make prediction
+f1.t.pred <- predict(f1.t, df.F01)
+# and measure spec & senc & accuracy
+sens.f1.t <- sensitivity(f1.t.pred, df.F01$FWF.true) 
+spec.f1.t <- specificity(f1.t.pred, df.F01$FWF.true) 
+```
+
+* Доля правильно классифицированных случаев PCCC = `r acc$Accuracy`
+* Чувствительность модели Se = `r sens.f1.t`
+* Специфичность модели Sp = `r spec.f1.t`
+
+### Определение 2 и 3 стадий (FWF ~ FBs)
+
+#### Модель: FBs ~ FWF
+
+Предикторы статистически незначимы!
+
+```{r, echo=F, cache=T}
+df.F23 <- df[df$FBs == 2 | df$FBs == 3, c("FWF", "FBs")] 
+df.F23$FWF.true <- ifelse(df.F23$FWF == df.F23$FBs, "yes", "no")
+df.F23$FWF.true <- as.factor(df.F23$FWF.true)
+f2 <- glm(FWF.true ~ FWF, data=df.F23 ,family = "binomial")
+summary(f2)
+```
+
+#### ROC-кривая
+
+```{r, echo=F, cache=T}
+df.F23$вероятность <- predict(f2, type="response")
+pred_f2 <- prediction(df.F23$вероятность, df.F23$FWF.true)
+perf_f2 <- performance(pred_f2, "tpr", "fpr")
+plot(perf_f2, colorize=T, lwd=3)
+auc2 <- performance(pred_f2, measure = "auc")
+acc2 <- performance(pred_f2, measure = "acc")
+```
+
+Площадь под кривой AUC=`r auc2@y.values[1]`
+
+#### Кривые специфичности, чувствительности и аккуратности модели
+
+```{r, echo=F, cache=T}
+perf3 <- performance(pred_f2, x.measure = "cutoff", measure="spec")
+perf4 <- performance(pred_f2, x.measure = "cutoff", measure="sens")
+perf5 <- performance(pred_f2, x.measure = "cutoff", measure="acc")
+plot(perf3, col = "red", lwd =2)
+plot(add=T, perf4 , col = "green", lwd =2)
+plot(add=T, perf5, lwd =2)
+legend(x = 0.6,y = 0.23, c("спец.", "чув.", "точн."),lty = 1, col =c('red', 'green', 'black'), bty = 'n', cex = 0.8, lwd = 2)
+abline(v= 0.907, lwd = 1, lty=6)
+```
+
+#### Аккуратность, чувствительность и специфичность выбранной модели
+
+```{r, echo=F, cache=T, message=F, warning=F}
+set.seed(112)
+library(caret)
+f2.t <- train(FWF.true ~ FWF, data=df.F23, method="glm")
+acc <- f2.t$results 
+# make prediction
+f2.t.pred <- predict(f2.t, df.F23)
+# and measure spec & senc & accuracy
+sens.f2.t <- sensitivity(f2.t.pred, df.F23$FWF.true) 
+spec.f2.t <- specificity(f2.t.pred, df.F23$FWF.true) 
+```
+
+* Доля правильно классифицированных случаев PCCC = `r acc$Accuracy`
+* Чувствительность модели Se = `r sens.f2.t`
+* Специфичность модели Sp = `r spec.f2.t`
+
+### Определение 4 стадии (FWF ~ FBs)
+
+В данном случае мы имеем 100% совпадение показателей FWF и FBs
+
+```{r, echo=F, cache=T}
+library(knitr)
+library(gridExtra)
+library(kableExtra)
+df.F4 <- df[df$FBs == 4, c("FWF", "FBs")] 
+kable(df.F4, "html") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+### Определение 0 стадии стеатоза (SBs - SWS)
+
+#### Модель: SBs ~ SWS
+
+Предикторы статистически незначимы!
+
+```{r, echo=F, cache=T}
+df.S0 <- df[df$SBs == 0 , c("SWS", "SBs")] 
+df.S0$SBs.true <- ifelse(df.S0$SWS == df.S0$SBs, "yes", "no")
+df.S0$SBs.true <- as.factor(df.S0$SBs.true)
+s0 <- glm(SBs.true ~ SWS, data=df.S0 ,family = "binomial")
+summary(s0)
+```
+
+#### ROC-кривая
+
+```{r, echo=F, cache=T}
+df.S0$вероятность <- predict(s0, type="response")
+pred_s0 <- prediction(df.S0$вероятность, df.S0$SBs.true)
+perf_s0 <- performance(pred_s0, "tpr", "fpr")
+plot(perf_s0, colorize=T, lwd=3)
+auc3 <- performance(pred_s0, measure = "auc")
+acc3 <- performance(pred_s0, measure = "acc")
+```
+
+Площадь под кривой AUC=`r auc3@y.values[1]`
+
+#### Кривые специфичности, чувствительности и аккуратности модели
+
+```{r, echo=F, cache=T}
+perf3 <- performance(pred_s0, x.measure = "cutoff", measure="spec")
+perf4 <- performance(pred_s0, x.measure = "cutoff", measure="sens")
+perf5 <- performance(pred_s0, x.measure = "cutoff", measure="acc")
+plot(perf3, col = "red", lwd =2)
+plot(add=T, perf4 , col = "green", lwd =2)
+plot(add=T, perf5, lwd =2)
+legend(x = 0.6,y = 0.23, c("спец.", "чув.", "точн."),lty = 1, col =c('red', 'green', 'black'), bty = 'n', cex = 0.8, lwd = 2)
+abline(v= 0.9999, lwd = 1, lty=6)
+```
+
+#### Аккуратность, чувствительность и специфичность выбранной модели
+
+```{r, echo=F, cache=T, message=F, warning=F}
+set.seed(112)
+library(caret)
+s0.t <- train(SBs.true ~ SWS, data=df.S0, method="glm")
+acc <- s0.t$results 
+# make prediction
+s0.t.pred <- predict(s0.t, df.S0)
+# and measure spec & senc & accuracy
+sens.s0.t <- sensitivity(s0.t.pred, df.S0$SBs.true) 
+spec.s0.t <- specificity(s0.t.pred, df.S0$SBs.true) 
+```
+
+* Доля правильно классифицированных случаев PCCC = `r acc$Accuracy`
+* Чувствительность модели Se = `r sens.s0.t`
+* Специфичность модели Sp = `r spec.s0.t`
+
+### Определение 1 стадии стеатоза (SBs ~ SWS)
+
+#### Модель: SBs ~ SWS
+
+Предикторы статистически незначимы!
+
+```{r, echo=F, cache=T}
+df.S1 <- df[df$SBs == 1 , c("SWS", "SBs")] 
+df.S1$SBs.true <- ifelse(df.S1$SWS == df.S1$SBs, "yes", "no")
+df.S1$SBs.true <- as.factor(df.S1$SBs.true)
+s1 <- glm(SBs.true ~ SWS, data=df.S1 ,family = "binomial")
+summary(s1)
+```
+
+#### ROC-кривая
+
+```{r, echo=F, cache=T}
+df.S1$вероятность <- predict(s1, type="response")
+pred_s1 <- prediction(df.S1$вероятность, df.S1$SBs.true)
+perf_s1 <- performance(pred_s1, "tpr", "fpr")
+plot(perf_s1, colorize=T, lwd=3)
+auc4 <- performance(pred_s1, measure = "auc")
+acc4 <- performance(pred_s1, measure = "acc")
+```
+
+Площадь под кривой AUC=`r auc4@y.values[1]`
+
+#### Кривые специфичности, чувствительности и аккуратности модели
+
+```{r, echo=F, cache=T}
+perf3 <- performance(pred_s1, x.measure = "cutoff", measure="spec")
+perf4 <- performance(pred_s1, x.measure = "cutoff", measure="sens")
+perf5 <- performance(pred_s1, x.measure = "cutoff", measure="acc")
+plot(perf3, col = "red", lwd =2)
+plot(add=T, perf4 , col = "green", lwd =2)
+plot(add=T, perf5, lwd =2)
+legend(x = 0.6,y = 0.23, c("спец.", "чув.", "точн."),lty = 1, col =c('red', 'green', 'black'), bty = 'n', cex = 0.8, lwd = 2)
+abline(v= 0.9999, lwd = 1, lty=6)
+```
+
+#### Аккуратность, чувствительность и специфичность выбранной модели
+
+```{r, echo=F, cache=T, message=F, warning=F}
+set.seed(112)
+library(caret)
+s1.t <- train(SBs.true ~ SWS, data=df.S0, method="glm")
+acc <- s1.t$results 
+# make prediction
+s1.t.pred <- predict(s1.t, df.S0)
+# and measure spec & senc & accuracy
+sens.s1.t <- sensitivity(s1.t.pred, df.S0$SBs.true) 
+spec.s1.t <- specificity(s1.t.pred, df.S0$SBs.true) 
+```
+
+* Доля правильно классифицированных случаев PCCC = `r acc$Accuracy`
+* Чувствительность модели Se = `r sens.s1.t`
+* Специфичность модели Sp = `r spec.s1.t`
+
+### Определение 2 и 3 стадий стеатоза (SBs ~ SWS)
+
+#### Модель: SBs ~ SWS
+
+Предикторы статистически незначимы!
+
+```{r, echo=F, cache=T}
+df.S23 <- df[df$SBs == 2 | df$SBs == 3 , c("SWS", "SBs")] 
+df.S23$SBs.true <- ifelse(df.S23$SWS == df.S23$SBs, "yes", "no")
+df.S23$SBs.true <- as.factor(df.S23$SBs.true)
+s23 <- glm(SBs.true ~ SWS, data=df.S23 ,family = "binomial")
+summary(s23)
+```
+
+#### ROC-кривая
+
+```{r, echo=F, cache=T}
+df.S23$вероятность <- predict(s23, type="response")
+pred_s23 <- prediction(df.S23$вероятность, df.S23$SBs.true)
+perf_s23 <- performance(pred_s23, "tpr", "fpr")
+plot(perf_s23, colorize=T, lwd=3)
+auc5 <- performance(pred_s23, measure = "auc")
+acc5 <- performance(pred_s23, measure = "acc")
+```
+
+Площадь под кривой AUC=`r auc5@y.values[1]`
+
+#### Кривые специфичности, чувствительности и аккуратности модели
+
+```{r, echo=F, cache=T}
+perf3 <- performance(pred_s23, x.measure = "cutoff", measure="spec")
+perf4 <- performance(pred_s23, x.measure = "cutoff", measure="sens")
+perf5 <- performance(pred_s23, x.measure = "cutoff", measure="acc")
+plot(perf3, col = "red", lwd =2)
+plot(add=T, perf4 , col = "green", lwd =2)
+plot(add=T, perf5, lwd =2)
+legend(x = 0.55,y = 0.23, c("спец.", "чув.", "точн."),lty = 1, col =c('red', 'green', 'black'), bty = 'n', cex = 0.8, lwd = 2)
+abline(v= 0.778, lwd = 1, lty=6)
+```
+
+#### Аккуратность, чувствительность и специфичность выбранной модели
+
+```{r, echo=F, cache=T, message=F, warning=F}
+set.seed(112)
+library(caret)
+s23.t <- train(SBs.true ~ SWS, data=df.S23, method="glm")
+acc <- s23.t$results 
+# make prediction
+s23.t.pred <- predict(s23.t, df.S23)
+# and measure spec & senc & accuracy
+sens.s23.t <- sensitivity(s23.t.pred, df.S23$SBs.true) 
+spec.s23.t <- specificity(s23.t.pred, df.S23$SBs.true) 
+```
+
+* Доля правильно классифицированных случаев PCCC = `r acc$Accuracy`
+* Чувствительность модели Se = `r sens.s23.t`
+* Специфичность модели Sp = `r spec.s23.t`
+
+## Ординальная логистическая регрессия
+
+#### Модель1: FBs ~ FWF
+
+Все предикторы статистически значимы (<<0.01)
+
+```{r, echo=F, cache=T, warning=F, message=F}
+library(MASS)
+m1 <- polr(FBs ~ FWF, data=df, Hess = TRUE)
+summary(m1)
+#df$FWF.prob.m1 <- predict(object = m, type="probs")
+```
+
+#### Модель2: FBs ~ Fscan
+
+Все предикторы статистически значимы (<<0.01)
+
+```{r, echo=F, cache=T, warning=F, message=F}
+m2 <- polr(FBs ~ Fscan, data=df, Hess = TRUE)
+summary(m2)
+```
+
+
+#### Сравнение Моделей 1 и 2
+
+Согласно показателю AIC и отклонениям остатков (Residual Deviance) первая модель лучше.
+Тем не менее ANOVA показывает, что различия между моделями статистически незначимы.
+
+```{r, echo=F, cache=T, warning=F, message=F}
+anova(m1, m2, test="Chisq")
+```
+
+#### Модель3: SBs ~ SWS
+
+Все предикторы статистически значимы (<<0.01)
+
+```{r, echo=F, cache=T, warning=F, message=F}
+m3 <- polr(SBs ~ SWS, data=df, Hess = TRUE)
+summary(m3)
+#ctable1 <- coef(summary(m0))
+#p1 <- pnorm(abs(ctable1[,"t value"]), lower.tail = FALSE)*2
+#ctable1 <- cbind(ctable1, "p value"= p1)
+#exp(coef(m0))
+#exp(coef(m2))
+```
+
+

@@ -1,0 +1,607 @@
+---
+title: "COVID19 analysis"
+output:
+    html_document:
+      df_print: paged
+      highlight: tango
+      theme: spacelab
+      toc: yes
+      toc_float: true
+---
+
+```{r, echo=F, warning=F, message=F}
+#Sys.setenv(RSTUDIO_PANDOC="/Users/andgu885/miniconda3/bin/pandoc")
+knitr::opts_chunk$set(echo = FALSE, messages=FALSE, warning = FALSE, cache=T)
+#Sys.setlocale(,"ru_RU")
+#Sys.setenv(RSTUDIO_PANDOC="/Users/andgu885/miniconda3/bin/pandoc")
+library(reportROC)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(kableExtra)
+
+setwd('~/GoogleDrive/MCSC/karapetyan/')
+
+df <- read_excel('Версия 3. Обоняние и ковид.xlsx', col_types = c('numeric', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text','text', 'text', 'text', 'text','text', 'text', 'text', 'text'), range = 'A1:Q134')
+
+#df <- read_excel('version3.xlsx', col_types = c('numeric', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text','text'), range = 'A1:J116')
+
+full.names <- c('age', 'sex', 'COVID', 'test.type', 'transmission.type', 'bad.contacts', 'risk.factors', 'hyposmia.before', 'when.noticed', 'olfactory.loss', 'other.symptoms', 'column.1' , 'stat.amb', 'progress', 'current.state', 'anosmia.regress', 'n.days.regress')
+
+part.names <- c('age', 'sex', 'COVID', 'test.type', 'transmission.type', 'bad.contacts', 'risk.factors', 'hypsomia.before', 'when.noticed', 'olfactory.loss')
+
+#names(df) <- part.names
+names(df) <- full.names
+factor.names <- full.names[2:length(full.names)]
+
+df[factor.names] <- lapply(df[factor.names] , factor)
+```
+
+# Данные
+
+```{r}
+kable(df, caption = "Data table. New column names") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position = 'left', fixed_thead = T ) %>% 
+  scroll_box(height = "600px", width="900px")
+```
+
+
+```{r, eval=F}
+summary(df)
+```
+
+# Предсказательная ценность `olfactory.loss` c `hyposmia.before`
+
+Сокращение: ВПО - внезапная потеря обоняния (sudden olfactory loss)
+
+В таблице снизу колонка `COVID` перекодрована в 0 (рез-т теста отрицательный) и 1 (результат теста положительный), COVID='в работе' удален, `olfactory.loss` перекодирован в 0 и 1 по тому же принципу. Пустые ячейки удалены.
+
+```{r}
+# remove "в работе"
+df.recode1 <- df %>% filter(COVID != 'в работе') %>% 
+  select(COVID, olfactory.loss) %>% 
+  filter(!is.na(olfactory.loss))
+
+df.recode1$olfactory.loss <- ifelse(df.recode1$olfactory.loss=='нет', 0, 1)
+df.recode1$COVID <- ifelse(df.recode1$COVID == 'Отриц.', 0, 1)
+
+kable(df.recode1, caption = "COVID recoded. No hyposmia.before")  %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position = 'left', fixed_thead = T ) %>% 
+  scroll_box(height = "300px", width="200px")
+
+```
+
+## График ROC
+
+```{r}
+roc.result1 <- reportROC(gold=df.recode1$COVID, predictor.binary=df.recode1$olfactory.loss, plot=T)
+```
+
+## Таблица с результатами ROC-AUC анализа
+
+```{r}
+roc.result1 <- as.data.frame(t(roc.result1))
+roc.result1$X <- rownames(roc.result1)
+roc.result1 <- roc.result1[,c(2,1)]
+names(roc.result1) <- c('Показатель', 'Значение')
+
+kable(roc.result1, caption = "Табл. 3. Предсказательная ценность ВПО", row.names = F)  %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position = 'left', fixed_thead = T ) %>% 
+  scroll_box(height = "300px", width="200px") 
+```
+
+
+# Предсказательная ценность `olfactory.loss` без `hyposmia.before`
+
+Из колонки `hyposmia.before` удалены ответы 'да'. Все остальное закодировано по тому же принципу.
+
+```{r}
+# remove "в работе"
+df.recode2 <- df %>% filter(COVID != 'в работе' ) %>% 
+  filter(hyposmia.before != 'да') %>% 
+  select(COVID, olfactory.loss) %>% 
+  filter(!is.na(olfactory.loss))
+
+df.recode2$olfactory.loss <- ifelse(df.recode2$olfactory.loss=='нет', 0, 1)
+df.recode2$COVID <- ifelse(df.recode2$COVID == 'Отриц.', 0, 1)
+```
+
+## График ROC
+
+```{r}
+roc.result2 <- reportROC(gold=df.recode2$COVID, predictor.binary=df.recode2$olfactory.loss, plot=T)
+```
+
+## Таблица с результатами ROC-AUC анализа
+
+```{r}
+roc.result2 <- as.data.frame(t(roc.result2))
+roc.result2$X <- rownames(roc.result2)
+roc.result2 <- roc.result2[,c(2,1)]
+names(roc.result2) <- c('Показатель', 'Значение')
+
+kable(roc.result2, caption = "Табл. 4. Предсказательная ценность ВПО", row.names = F)  %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position = 'left', fixed_thead = T ) %>% 
+  scroll_box(height = "300px", width="200px")
+```
+
+
+## Обе таблицы вместе
+
+```{r}
+roc.joined <- left_join(roc.result1, roc.result2, by='Показатель')
+#names(roc.joined) <- c('hyposmia.included', 'X', 'hyposmia.excluded')
+#roc.joined <- roc.joined[,c(2,1,3)]
+
+names(roc.joined) <- c('Показатель', 'Гипосмия включена', 'Гипосмия исключена')
+
+kable(roc.joined, caption = "Табл. 5. Объединенная таблица предсказательной ценности ВПО", row.names = F)  %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position = 'left', fixed_thead = T ) 
+```
+
+---
+Примечания:
+
+AUC - Area Under Curve
+
+ACC - accuracy
+
+SEN - sensitivity
+
+SPE - specificity
+
+PLR - positive likelihood ratio
+
+NLR - negative likelihood ratio
+
+PPV - positive predictive value
+
+NPV - negative predictive value
+
+**up** и **low** - верхняя и нижняя граница 95% доверительного интервала
+
+**SE** - стандартная ошибка
+
+### Шпаргалка
+
+![PPV and NPV explanation](./Predictive Value.jpg)
+
+# Описательная статистика
+
+## Возраст и пол ~ COVID
+
+
+Из таблицы ниже удалены COVID='в работе', hyposmia.before='да', пустые ячейки в `olfactory.loss`
+
+```{r}
+df.describe <- df %>% 
+  filter(COVID != 'в работе' ) %>% 
+  filter(hyposmia.before != 'да') %>% 
+  filter(!is.na(olfactory.loss))
+  
+df.describe$COVID <- if_else(df.describe$COVID == 'Отриц.', 0, 1)
+df.describe$olfactory.loss <- if_else(df.describe$olfactory.loss=='нет', 0, 1)
+df.describe$sex <- if_else(df.describe$sex == 'ж', 'f', 'm')
+
+df.describe$COVID <- factor(df.describe$COVID, levels=c('0', '1'))
+df.describe$olfactory.loss <- factor(df.describe$olfactory.loss, levels=c('0', '1'))
+df.describe$sex <- factor(df.describe$sex)
+
+```
+
+Из таблицы ниже ничего не удалено.
+
+```{r}
+df.describe2 <- df
+  
+df.describe2$COVID <- if_else(df.describe2$COVID == 'Отриц.', 0, 1)
+df.describe2$olfactory.loss <- if_else(df.describe2$olfactory.loss=='нет', 0, 1)
+df.describe2$sex <- if_else(df.describe2$sex == 'ж', 'f', 'm')
+
+df.describe2$COVID <- factor(df.describe2$COVID, levels=c('0', '1'))
+df.describe2$olfactory.loss <- factor(df.describe2$olfactory.loss, levels=c('0', '1'))
+df.describe2$sex <- factor(df.describe2$sex)
+```
+
+
+
+```{r, eval=F}
+summary(df.describe2)
+```
+
+```{r}
+library(psych)
+
+des.stat <- df.describe %>% select(age, sex) %>% describe( IQR=T ) %>% select(n, mean, sd, median, mad, min, max, range, se, IQR)
+
+des.stat.sex <- df.describe %>% select(age, sex) %>% describeBy(group=df.describe$sex, IQR=T ) 
+
+des.stat.combined <- bind_rows(des.stat, des.stat.sex$f %>% select(n, mean, sd, median, mad, min, max, range, se, IQR), des.stat.sex$m %>% select(n, mean, sd, median, mad, min, max, range, se, IQR)) %>% filter(mean > 2.00)
+
+des.stat.combined$SEX <- c('mf', 'f', 'm')
+
+kable(des.stat.combined, caption = "Age. Descriptive statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position = 'left', fixed_thead = T ) %>% 
+  scroll_box(height = "200px", width="600px")
+```
+
+
+### Распределение по возрасту (гистограмма)
+
+```{r}
+ggplot(df.describe, aes(age))+
+  geom_histogram(bins = 50, fill='steelblue', alpha=0.5)
+```
+
+
+
+### Распределение возраста с учетом пола
+
+```{r}
+ggplot(df.describe, aes(age))+geom_density(aes(fill=sex), alpha=0.5)
+```
+
+### Распределение возраста с учетом пола ~ COVID (0 - нет, 1 - есть)
+
+```{r}
+# separately in COVID+ and COVID-
+ggplot(df.describe, aes(age))+geom_density(aes(fill=sex), alpha=0.5)+facet_grid(COVID ~.)
+```
+
+## Распределние возраста с учетом пола + медианные значения возраста у М и Ж ~ olfactory loss (0 - нет, 1 - есть)
+
+```{r}
+dens.plot <- ggplot(df.describe %>% filter(COVID=='1'), aes(age))+
+  geom_density(aes(fill=sex), alpha=0.5)+
+  facet_grid(olfactory.loss ~.)
+
+box.plot <- ggplot(df.describe %>% filter(COVID=='1'), aes(sex, age))+
+  geom_boxplot(aes(fill=sex), alpha=0.5, notch = F, varwidth = T)+
+  facet_grid(olfactory.loss ~.)+
+  theme(legend.position = 'none')
+
+ggarrange(dens.plot, box.plot, ncol=2, nrow=1, widths = c(4,3))
+```
+
+## Регрессия аносмии
+
+### В целом
+
+```{r}
+# it's a fucking mess!
+
+days.regress <- sub('Более', 'более', df.describe$n.days.regress)
+days.regress <- sub('дло', 'до', days.regress)
+days.regress <- sub(' (5дней)', '', days.regress, fixed=T)
+days.regress <- sub('до14', 'до 14', days.regress)
+days.regress <- sub('не$', 'нет', days.regress)
+days.regress <- sub('не было', 'нет', days.regress)
+days.regress <- sub('нет аносм', 'нет', days.regress)
+days.regress <- sub('пока не регресс', 'нет', days.regress)
+days.regress <- sub('нет данных', NA, days.regress)
+days.regress <- sub('-', NA, days.regress)
+days.regress <- sub('cохр более 30 дней', 'более 30 дней', days.regress)
+days.regress <- sub(', ', ' ', days.regress, fixed=T)
+days.regress <- sub(',до', ' до', days.regress, fixed=T)
+days.regress <- sub('д.', '', days.regress, fixed=T)
+days.regress <- sub('через 14 до 30', 'от 14 до 30', days.regress)
+
+#summary(as.factor(sub('Более', 'более', days.regress)))
+
+#df$n.days.regress <- factor(days.regress, levels=c('нет', 'до 14 дней', 'от 14 до 30', 'более 30 дней'))
+df.describe$n.days.regress <- factor(days.regress, levels=c('нет', 'до 14 дней', 'от 14 до 30', 'более 30 дней'))
+
+# ENGLIHSH
+```
+
+```{r, warning=F, message=F}
+days.regress.summary <- df.describe %>% filter(COVID != '0') %>% group_by(n.days.regress) %>% summarise(n=n())
+
+days.regress.summary$prec.n <- days.regress.summary$n/sum(days.regress.summary$n)
+
+ggplot(days.regress.summary[c(1:4),], aes(n.days.regress, n))+
+  geom_bar(stat = 'identity', position = 'dodge', fill='steelblue', alpha=0.5)+
+  xlab('')
+```
+
+```{r}
+kable(days.regress.summary) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' ) 
+```
+
+
+### С учетом пола
+
+```{r, warning=F, message=F, cache=F}
+days.regress.summary.sex <- df.describe  %>% filter(COVID != '0') %>% group_by(n.days.regress, sex) %>% summarise(n=n())
+days.regress.summary.sex$n.days.regress.2 <- c(rep('no', 2), rep('up to 14 days', 2), rep('14 to 30 days', 2), rep('more than 30 days', 2), NA, NA)
+days.regress.summary.sex$n.days.regress.2 <- factor(days.regress.summary.sex$n.days.regress.2, levels = c('no', 'up to 14 days', '14 to 30 days', 'more than 30 days'))
+
+ggplot(days.regress.summary.sex[c(1:8),], aes(n.days.regress.2, n))+
+  geom_bar(stat = 'identity', position = 'dodge', aes(fill=sex), alpha=0.5)+
+  xlab('')
+```
+
+```{r}
+kable(days.regress.summary.sex) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position = 'left', fixed_thead = T ) 
+```
+
+## Когда замечено
+
+```{r}
+df.describe$when.noticed.before.after <- ifelse(grepl('после', df.describe$when.noticed), 'after', 'before')
+
+```
+
+### До или после диагностики
+
+#### В целом
+
+```{r, warning=F, message=F}
+bef.after.summary <- df.describe %>% filter(COVID != '0') %>% group_by(when.noticed.before.after) %>% summarise(n=n())
+
+ggplot(bef.after.summary, aes(when.noticed.before.after, n))+
+  geom_bar(stat = 'identity', position = 'dodge', alpha=0.5, fill='steelblue')+
+  xlab('')
+```
+
+
+```{r}
+kable(bef.after.summary) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' ) 
+```
+
+#### С учетом пола
+
+```{r, warning=F, message=F}
+bef.after.summary.sex <- df.describe %>% filter(COVID != '0') %>% group_by(when.noticed.before.after, sex) %>% summarise(n=n())
+
+ggplot(bef.after.summary.sex, aes(when.noticed.before.after, n))+
+  geom_bar(stat = 'identity', position = 'dodge', alpha=0.5, aes(fill=sex))+
+  xlab('')
+```
+
+```{r}
+kable(bef.after.summary.sex) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' ) 
+```
+
+
+#### С учетом пола и возраста
+
+```{r}
+ggplot(df.describe, aes(when.noticed.before.after, age))+
+  geom_boxplot(alpha=0.5, aes(fill=sex))+
+  xlab('')
+```
+
+## Когда замeчено с разбивкой по дням
+
+```{r}
+# it's a fucking mess again
+
+when.noticed.n.days <- sub(', до диагн.', '', df.describe$when.noticed, fixed = T)
+when.noticed.n.days <- sub('до диагн ', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('до диагн., ', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('до диагн, ', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('до диагн.,', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub(' до диагн', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub(' до диагн', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('до диагн,', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('до диагностики ', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('после диагн. ', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub(' после диагн', '', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub(' после', '', when.noticed.n.days, fixed = T)
+
+when.noticed.n.days <- sub('до диагност.', 'до диагностики', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('до диагн.', 'до диагностики', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('до диагн$', 'до диагностики', when.noticed.n.days)
+
+when.noticed.n.days <- sub('нет аносм', 'нет аносмии', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('нет симптомов', 'нет аносмии', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('нет таких симптомов', 'нет аносмии', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('нет$', 'нет аносмии', when.noticed.n.days)
+
+when.noticed.n.days <- sub('после диагн.', 'после диагностики', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('после диагн$', 'после диагностики', when.noticed.n.days)
+when.noticed.n.days <- sub('до диагност.', 'после диагностики', when.noticed.n.days, fixed = T)
+
+when.noticed.n.days <- sub('3й день.', '3й день', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('3 дня', '3й день', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('на 4й день', '4й день', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('2-3й', '2-3й день', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('5-й день', '5й день', when.noticed.n.days, fixed = T)
+
+when.noticed.n.days <- sub('2й день', '2-3й день', when.noticed.n.days, fixed = T)
+when.noticed.n.days <- sub('^3й день', '3-4й день', when.noticed.n.days, fixed = F)
+when.noticed.n.days <- sub('^4й день', '4-5й день', when.noticed.n.days, fixed = F)
+
+df.describe$when.noticed.n.days <- factor(when.noticed.n.days, levels = c("нет аносмии", "до диагностики", "после диагностики", "2-3й день", "3-4й день", "4-5й день", "5й день", "8й день", "10й день"))
+#unique(when.noticed.n.days)
+```
+
+```{r, warning=F, message=F}
+bef.after.summary.days <- df.describe %>% filter(COVID != '0') %>% group_by(when.noticed.n.days) %>% summarise(n=n())
+
+ggplot(bef.after.summary.days, aes(when.noticed.n.days, n))+
+  geom_bar(stat = 'identity', position = 'dodge', alpha=0.5, fill='steelblue')+
+  theme(axis.text.x = element_text(angle = 90))+
+  xlab('')
+```
+
+```{r, warning=F, message=F}
+bef.after.summary.days.sex <- df.describe %>% filter(COVID != '0') %>% group_by(when.noticed.n.days, sex) %>% summarise(n=n())
+
+ggplot(bef.after.summary.days.sex, aes(when.noticed.n.days, n))+
+  geom_bar(stat = 'identity', position = 'dodge', alpha=0.5, aes(fill=sex))+
+  theme(axis.text.x = element_text(angle = 90))+
+  xlab('')
+```
+
+```{r}
+
+ggplot(df.describe, aes(when.noticed.n.days, age))+
+  geom_boxplot(alpha=0.5, aes(fill=sex))+
+  theme(axis.text.x = element_text(angle = 90))+
+  xlab('')
+```
+
+
+## Другие симптомы
+
+Тут есть загадочная запись "х", которую я удалил
+
+### Пол и другие симптомы
+
+```{r, warning=F, message=F}
+oth.sym.sex <- df.describe %>% group_by(other.symptoms, sex) %>% summarise(n=n())
+ggplot(oth.sym.sex[c(1:5),] %>% filter(other.symptoms != 'х'), aes(other.symptoms, n))+
+  geom_bar(aes(fill=sex), stat='identity', position='dodge', alpha=0.5)+
+  xlab('')
+```
+
+### Потеря обнояния и другие симптомы
+
+```{r, warning=F, message=F}
+oth.sym.sex <- df.describe %>% group_by(other.symptoms, olfactory.loss) %>% summarise(n=n())
+ggplot(oth.sym.sex[c(1:5),] %>% filter(other.symptoms != 'х'), aes(other.symptoms, n))+
+  geom_bar(aes(fill=olfactory.loss), stat='identity', position='dodge', alpha=0.5)+
+  xlab('')
+```
+
+### Возраст и другие симптомы
+
+```{r}
+ggplot(df.describe %>% filter(other.symptoms != 'х'), aes(other.symptoms, age))+
+  geom_boxplot(aes(fill=sex), alpha=0.5)+
+  xlab('')
+```
+
+```{r, eval=FALSE}
+ggplot(df.describe %>% filter(other.symptoms != 'х'), aes(other.symptoms, age))+
+  geom_boxplot(aes(fill=olfactory.loss), alpha=0.5)+
+  xlab('')
+```
+
+## Другие симптомы подробно
+
+```{r}
+df2 <- read_excel('version3.xlsx', sheet = 'Лист2')
+
+oth.symptoms.details <- as.data.frame(apply(df2, 2, function(x){sum(!is.na(x))}))
+
+names(oth.symptoms.details) <- c('n')
+oth.symptoms.details$symptom <- rownames(oth.symptoms.details)
+oth.symptoms.details$percent <- oth.symptoms.details$n/nrow(df2)
+oth.symptoms.details <- oth.symptoms.details[, c(2,1,3)]
+rownames(oth.symptoms.details) <- NULL
+
+kable(oth.symptoms.details) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' )
+
+```
+
+## Test type
+
+PCR = 1
+
+AB = 2
+
+Both = 3
+
+N/A = 4
+
+No test = 5
+
+
+```{r}
+covid.result <- df$COVID
+covid.result <- sub('предПоложит пол.', 'Положит.', covid.result,  fixed = T)
+covid.result <- sub('предПоложит пол', 'Положит.', covid.result, fixed = T)
+covid.result <- sub('преПоложит пол', 'Положит.', covid.result, fixed = T)
+df$COVID <- covid.result
+
+test.type.df1 <- df %>% group_by(test.type) %>% summarise(n=n())
+test.type.df1$percent <- test.type.df1$n/sum(test.type.df1$n)
+test.type.df1$test.type <- c('PCR', 'AB', 'Both', 'N/A', 'No test', NA)
+test.type.df1
+
+```
+
+```{r}
+test.type.df2 <- df %>% group_by(test.type, COVID) %>% summarise(n=n())
+test.type.df2$percent.of.n <- test.type.df2$n/sum(test.type.df2$n)
+test.type.df2$test.type <- c(rep('PCR', 3), rep('AB', 2), rep('Both', 3), rep('N/A', 3), 'No test', NA)
+test.type.df2
+
+kable(test.type.df2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' )
+```
+
+## Гипотеза
+
+у пац с потерями обон легче выражены симптомы
+
+```{r}
+df.recode4 <- df %>% filter(COVID != 'в работе') %>% 
+  select(olfactory.loss, other.symptoms) %>% 
+  filter(!is.na(olfactory.loss)) %>% 
+  filter(!is.na(other.symptoms))
+
+df.recode4$olfactory.loss <- ifelse(df.recode4$olfactory.loss=='нет', 0, 1)
+df.recode4$other.symptoms <- ifelse(df.recode4$other.symptoms == 'нет', 0, 1)
+
+table(df.recode4)
+```
+
+```{r}
+fisher.test(table(df.recode4))
+```
+
+Нулевая гипотеза - между наличием других симптомов и потерей обоняния нет связи
+
+p-value < 0.05
+
+Нуль-гипотезу отвергаем, считаем, что взаимосвязь есть
+
+```{r}
+mosaicplot(table(df.recode4), main='Mosaic plot 1')
+```
+
+На графике видно, что среди тех, кто имел потерю обоняния, наличие и отсутствие других симптомов распределено равномерно, а вот среди тех, кто не имел потери обоняния, большинство имело какие-либо еще симптомы. 
+
+## Sex and OL freq
+
+```{r}
+df.recode5 <- df %>% filter(COVID != 'в работе') %>% 
+  select(olfactory.loss, sex) %>% 
+  filter(!is.na(olfactory.loss)) %>% 
+  filter(!is.na(sex))
+
+df.recode5$olfactory.loss <- ifelse(df.recode5$olfactory.loss=='нет', 0, 1)
+df.recode5$sex <- ifelse(df.recode5$sex == 'ж', 'f', 'm')
+
+table(df.recode5)
+```
+
+```{r}
+fisher.test(table(df.recode5))
+```
+
+
+```{r}
+mosaicplot(table(df.recode5), main='Mosaic plot 2')
+```
+
+
+# References
+
+Все статистическе расчеты, обработка данных и визуализация сделаны с помощью языка программирования R [1], пакетов `ggplot2` [2] и `reportROC` [3].
+
+1. R Core Team (2019). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
+
+2. H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+
+3. Zhicheng Du and Yuantao Hao (2019). reportROC: An Easy Way to Report ROC Analysis. R package version 3.4. https://CRAN.R-project.org/package=reportROC

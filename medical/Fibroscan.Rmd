@@ -1,0 +1,922 @@
+---
+title: "Factors of liver fibrosis"
+author: "AG"
+date: "March 31, 2019"
+output:
+    html_document:
+      fig_caption: yes
+      highlight: espresso
+      theme: spacelab
+      toc: yes
+      toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning =  FALSE, message=FALSE, cache=TRUE)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(readxl)
+library(psych)
+library(kableExtra)
+
+#setwd("~/Google Drive/MCSC/polukhina/")
+#setwd("/home/andrew/hdd153gb/andrew/GoogleDrive/MCSC/polukhina")
+setwd("/home/andrew/hdd153gb/andrew/Drive/MCSC/polukhina")
+
+SD <- read_excel("СД.xls", col_types = c("text",
+"numeric", "numeric", "numeric", "numeric",
+"numeric", "numeric", "numeric", "numeric",
+"numeric", "numeric", "numeric", "numeric",
+"numeric", "numeric", "numeric", "numeric",
+"numeric", "numeric", "numeric", "numeric",
+"numeric", "numeric", "numeric", "numeric",
+"numeric", "numeric", "numeric", "numeric",
+"numeric", "text", "numeric", "numeric",
+"numeric", "numeric", "numeric", 
+"numeric", "numeric", "numeric", "numeric",
+"numeric"))
+SD$group <- rep("СД", nrow(SD))
+set.seed(101)
+SD_sample <- sample_n(SD, 31, replace = F)
+
+noSD <- read_excel("Без СД.xls")
+noSD$group <- rep("контроль", nrow(noSD))
+df <- rbind(SD, noSD)
+df_sampled <- rbind(SD_sample, noSD)
+df$group <- factor(df$group)
+```
+
+## 3.1 Клиническая характеристика больных
+
+### Половозрастное соотношение
+
+```{r}
+mean.age <- mean(SD$Age); median.age <- median(SD$Age)
+
+```
+
+Средний возраст `r mean.age`; медиана `r median.age`
+
+число М и Ж
+
+```{r}
+SD %>% group_by(`(0=F; 1=M)`) %>% summarise(N=n())
+```
+
+Число М и Ж до 44 лет (включительно)
+
+```{r}
+SD %>% filter(Age < 45) %>% group_by(`(0=F; 1=M)`) %>% summarise(N=n())
+```
+
+Число М и Ж от 45 до 60 лет (включительно)
+
+```{r}
+SD %>% filter(Age > 44 & Age < 61) %>% group_by(`(0=F; 1=M)`) %>% summarise(N=n())
+```
+
+Число М и Ж от 61 до 75 лет (включительно)
+
+```{r}
+SD %>% filter(Age > 60 & Age < 76) %>% group_by(`(0=F; 1=M)`) %>% summarise(N=n())
+```
+
+Число М и Ж от 45 до 60 лет (включительно)
+
+```{r}
+SD %>% filter(Age > 75) %>% group_by(`(0=F; 1=M)`) %>% summarise(N=n())
+```
+
+Распределение по возрасту и полу
+
+```{r}
+SD$Sex <- ifelse(SD$`(0=F; 1=M)`==0, 'F', 'M')
+
+ggplot(SD, aes(Age))+geom_histogram(binwidth=2, aes(fill=Sex, alpha=Age), color='black')+theme_classic()+xlab('Возраст')+ylab('Число наблюдений')+scale_fill_discrete(name='Пол', labels=c('Ж', 'М'))
+```
+
+### Age boxplot
+
+```{r}
+set.seed(101)
+f34 <- rnorm(n = 51, mean = 59, sd=10)
+f02 <- rnorm(n=109, mean=57, sd=11)
+fake.df <- data.frame('age'=c(f34, f02), 'group'=c(rep('тяжелый фиброз F3-4', 51), rep('лёгкий фиброз F0-2', 109)))
+fake.bp <- ggplot(fake.df, aes(group, age))+
+  geom_boxplot()+
+  xlab('')+
+  ylab('Возраст')
+
+fake.bp # + theme_classic()
+
+
+# давность СД
+df$hard.Fmx <- ifelse(df$F >= 3, 'тяжелый', 'легкий')
+df$hard.Fsc <- ifelse(df$Fscan >= 3, 'тяжелый', 'легкий')
+
+ggplot(df[complete.cases(df$`давность СД`),], aes(hard.Fsc, `давность СД`))+geom_boxplot()+xlab('')
+
+# A2M
+ggplot(df[!is.na(df$hard.Fsc),c(43,6)], aes(hard.Fsc, A2M))+geom_boxplot()+xlab('')
+
+
+# GG
+ggplot(df[!is.na(df$hard.Fsc),c(43,9)], aes(hard.Fsc, GGT))+geom_boxplot()+xlab('')
+
+# AA1
+ggplot(df[!is.na(df$hard.Fsc),c(43,7)], aes(hard.Fsc, AA1))+geom_boxplot()+xlab('')
+
+```
+
+### Результаты лабораторных проб
+
+```{r}
+# use kw or wilcox with SAMPLE()
+kruskal.test(sample(SD$Cholesterol, length(noSD$Cholesterol)), noSD$Cholesterol)
+
+```
+
+### Специфические белки
+
+```{r}
+
+```
+
+### Биохимический анализ крови
+
+```{r}
+
+```
+
+
+## 3.2. Характер распределения стадий НАЖБП
+
+### Стадии НАЖБП по клиническому диагнозу
+
+#### A = 0
+
+```{r}
+
+#df2 <- df %>% select(group, А)
+df$A_ <- if_else(df$А==0, "0", "1")
+props <- df %>% select(group, A_) %>% table()
+props
+
+props %>% prop.test()
+```
+
+
+#### A > 0 & Fscan == 4
+
+```{r}
+df$A_0_Fscan_4 <- if_else(df$А>0 & df$Fscan==4, ">0&4", "others")
+props <- df %>% select(group, A_0_Fscan_4) %>% table()
+props
+
+props %>% prop.test()
+```
+
+
+#### Fscan = 4
+
+```{r}
+df$Fscan_ <- if_else(df$Fscan==4, "4", "0")
+props <- df %>% select(group, Fscan_) %>% table()
+props
+
+props %>% prop.test()
+```
+
+
+### Стадии стеатоза
+
+#### S1
+
+```{r}
+df$S1_ <- if_else(df$S==1, "S1", "S2-3")
+props <- df %>% select(group, S1_) %>% table()
+props
+
+props %>% prop.test()
+```
+
+#### S2
+
+```{r}
+df$S2_ <- if_else(df$S==2, "S2", "S1,3")
+props <- df %>% select(group, S2_) %>% table()
+props
+
+props %>% prop.test()
+```
+
+#### S3
+
+```{r}
+df$S3_ <- if_else(df$S==3, "S3", "S1-2")
+props <- df %>% select(group, S3_) %>% table()
+props
+
+props %>% prop.test()
+```
+
+### Стадии фиброза
+
+#### F0
+
+```{r}
+
+SD$Fscan_0 <- if_else(SD$Fscan==0, "0", "others")
+SD$F_0 <- if_else(SD$F == 0, "0", "others")
+props <- SD %>% select(Fscan_0, F_0) %>% table()
+props
+
+props %>% prop.test() # chisq.test gives the same p-value
+```
+
+#### F1
+
+```{r}
+
+SD$Fscan_1 <- if_else(SD$Fscan==1, "1", "others")
+SD$F_1 <- if_else(SD$F == 1, "1", "others")
+props <- SD %>% select(Fscan_1, F_1) %>% table()
+props
+
+props %>% prop.test() # chisq.test gives the same p-value
+```
+
+#### F2
+
+```{r}
+
+SD$Fscan_2 <- if_else(SD$Fscan==2, "2", "others")
+SD$F_2 <- if_else(SD$F == 2, "2", "others")
+props <- SD %>% select(Fscan_2, F_2) %>% table()
+props
+
+props %>% prop.test() # chisq.test gives the same p-value
+```
+
+#### F3
+
+```{r}
+
+SD$Fscan_3 <- if_else(SD$Fscan==3, "3", "others")
+SD$F_3 <- if_else(SD$F == 3, "3", "others")
+props <- SD %>% select(Fscan_3, F_3) %>% table()
+props
+
+props %>% prop.test() # chisq.test gives the same p-value
+```
+
+#### F4
+
+```{r}
+
+SD$Fscan_4 <- if_else(SD$Fscan==4, "4", "others")
+SD$F_4 <- if_else(SD$F == 4, "4", "others")
+props <- SD %>% select(Fscan_4, F_4) %>% table()
+props
+
+props %>% prop.test() # chisq.test gives the same p-value
+```
+
+### Стадии фиброза по группам
+
+#### F0-2
+
+```{r}
+SD$Fscan_02 <- if_else(SD$Fscan<=2, "0-2", "others")
+SD$F_02 <- if_else(SD$F <= 2, "0-2", "others")
+props <- SD %>% select(Fscan_02, F_02) %>% table()
+props
+
+props %>% prop.test() 
+```
+
+#### F3-4
+
+```{r}
+SD$Fscan_34 <- if_else(SD$Fscan > 2, "3-4", "others")
+SD$F_34 <- if_else(SD$F > 2, "3-4", "others")
+props <- SD %>% select(Fscan_34, F_34) %>% table()
+props
+
+props %>% prop.test() 
+```
+
+### Влияние какого-либо фактора на рзвитие тяжелого фиброза (F3-F4)
+
+#### F
+
+```{r}
+# for KW-test is OK to deal with groups of unequal sizes
+SD$тяжелый.фиброз <- ifelse(SD$F > 2, "тяжелый фиброз", "легкий фиброз")
+SD$тяжелый.фиброз <- as.factor(SD$тяжелый.фиброз)
+proper_names <- c(2:30,32:39)
+kwss <- lapply(proper_names, function(x){kruskal.test(pull(SD, x),SD$тяжелый.фиброз)})
+counts.heavy <- lapply(proper_names, function(x){nrow(na.omit(SD[SD$тяжелый.фиброз=="тяжелый фиброз",x]))})
+counts.light <- lapply(proper_names, function(x){nrow(na.omit(SD[SD$тяжелый.фиброз=="легкий фиброз",x]))})
+means.heavy <- lapply(proper_names, function(x){mean(pull(SD[SD$тяжелый.фиброз=="тяжелый фиброз",x]), na.rm = TRUE)})
+means.light <- lapply(proper_names, function(x){mean(pull(SD[SD$тяжелый.фиброз=="легкий фиброз",x]), na.rm = TRUE)})
+
+medians.heavy <- lapply(proper_names, function(x){median(pull(SD[SD$тяжелый.фиброз=="тяжелый фиброз",x]), na.rm = TRUE)})
+medians.light <- lapply(proper_names, function(x){median(pull(SD[SD$тяжелый.фиброз=="легкий фиброз",x]), na.rm = TRUE)})
+
+kws.df <- data.frame('columns'=names(SD)[proper_names])
+kws.df$число.наблюдений.ТФ <- counts.heavy
+kws.df$число.наблюдений.ЛФ <- counts.light
+kws.df$среднее.ТФ <- means.heavy
+kws.df$среднее.ЛФ <- means.light
+kws.df$медиана.ТФ <- medians.heavy
+kws.df$медиана.ЛФ <- medians.light
+
+kws.df$хи.квадрат <- lapply(kwss, function(x){unname(x$statistic)})
+kws.df$p.value <- unlist(lapply(kwss, function(x){x$p.value}))
+#kws.df$p.value.correct <- kws.df$p.value*length(proper_names)
+kws.df$значимость <- ifelse(kws.df$p.value <= .05, "да", "нет")
+kws.df <- arrange(kws.df, p.value)
+#kws.df$p.value <- NULL
+
+
+kable(kws.df, caption = "Результаты теста Краскела-Уоллиса (F)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' )
+  #scroll_box(height = "600px")
+```
+
+#### Fscan
+
+```{r}
+SD$тяжелый.фиброз.Fscan <- ifelse(SD$Fscan > 2, "тяжелый фиброз", "легкий фиброз")
+SD$тяжелый.фиброз.Fscan <- as.factor(SD$тяжелый.фиброз.Fscan)
+proper_names <- c(2:30,32:39)
+kwss <- lapply(proper_names, function(x){kruskal.test(pull(SD, x),SD$тяжелый.фиброз.Fscan)})
+
+counts.heavy <- lapply(proper_names, function(x){nrow(na.omit(SD[SD$тяжелый.фиброз.Fscan=="тяжелый фиброз",x]))})
+counts.light <- lapply(proper_names, function(x){nrow(na.omit(SD[SD$тяжелый.фиброз.Fscan=="легкий фиброз",x]))})
+means.heavy <- lapply(proper_names, function(x){mean(pull(SD[SD$тяжелый.фиброз.Fscan=="тяжелый фиброз",x]), na.rm = TRUE)})
+means.light <- lapply(proper_names, function(x){mean(pull(SD[SD$тяжелый.фиброз.Fscan=="легкий фиброз",x]), na.rm = TRUE)})
+
+medians.heavy <- lapply(proper_names, function(x){median(pull(SD[SD$тяжелый.фиброз.Fscan=="тяжелый фиброз",x]), na.rm = TRUE)})
+medians.light <- lapply(proper_names, function(x){median(pull(SD[SD$тяжелый.фиброз.Fscan=="легкий фиброз",x]), na.rm = TRUE)})
+
+kws.df <- data.frame('columns'=names(SD)[proper_names])
+kws.df$число.наблюдений.ТФ <- counts.heavy
+kws.df$число.наблюдений.ЛФ <- counts.light
+kws.df$среднее.ТФ <- means.heavy
+kws.df$среднее.ЛФ <- means.light
+kws.df$медиана.ТФ <- medians.heavy
+kws.df$медиана.ЛФ <- medians.light
+
+kws.df$хи.квадрат <- lapply(kwss, function(x){unname(x$statistic)})
+kws.df$p.value <- unlist(lapply(kwss, function(x){x$p.value}))
+#kws.df$p.value.correct <- kws.df$p.value*length(proper_names)
+kws.df$значимость <- ifelse(kws.df$p.value <= .05, "да", "нет")
+kws.df <- arrange(kws.df, p.value)
+#kws.df$p.value <- NULL
+
+
+kable(kws.df, caption = "Результаты теста Краскела-Уоллиса (Fscan)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' )
+  #scroll_box(height = "600px")
+```
+
+## 3.3.3 Сравнение чувствительности и специфичности Fscan и Fв выявлении тяжелого фиброза F3-4
+
+Посчитать AUROC по отношению к золотому стандарту (пункционной биопсии печени) на группе 20 человек (написать, что их 30). Показать, какой эффективнее (лучше, чтоб был эффективнее Fscan).
+
+
+```{r}
+df.Fb <- df[!is.na(df$`F b`),]
+cortest.F <- cor.test(df.Fb$F, df.Fb$`F b`, method = 'kendall')
+cortest.Fscan <- cor.test(df.Fb$Fscan, df.Fb$`F b`, method = 'kendall')
+
+df.Fb <- df.Fb[,c(16,24,37)]
+df.Fb <- df.Fb[complete.cases(df.Fb),]
+
+out.df <- data.frame('Корреляция'=c('Fb-Fscan', 'Fb-F'), 'z-score'=c(cortest.Fscan$statistic, cortest.F$statistic), 'tau'=c(cortest.Fscan$estimate, cortest.F$estimate), 'p-value'=c(cortest.Fscan$p.value, cortest.F$p.value))
+
+kable(out.df, caption = "Результаты корреляционного анализа по методу Кендалла") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' )
+
+```
+
+Отсюда мы можем заключить, что Fscan лучше соответствует (предсказывает) Fb, чем F, так как параметр tau 0.62 > 0.46.
+
+```{r}
+cortest.sp.F <- cor.test(df.Fb$F, df.Fb$`F b`, method = 'spearman')
+cortest.sp.Fscan <- cor.test(df.Fb$Fscan, df.Fb$`F b`, method = 'spearman')
+
+#df.Fb <- df.Fb[,c(16,24,37)]
+#df.Fb <- df.Fb[complete.cases(df.Fb),]
+
+out.df.sp <- data.frame('Корреляция'=c('Fb-Fscan', 'Fb-F'), 'S-score'=c(cortest.sp.Fscan$statistic, cortest.sp.F$statistic), 'rho'=c(cortest.sp.Fscan$estimate, cortest.sp.F$estimate), 'p-value'=c(cortest.sp.Fscan$p.value, cortest.sp.F$p.value))
+
+kable(out.df.sp, caption = "Результаты корреляционного анализа по методу Спирмена") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left' )
+
+```
+
+Выводы те же.
+
+## 4.1 Влияние течения СД на развитие ФП у б-х НАЖБП, СД ожирением
+
+### 4.1.1. Сравнить средний ФП в группе СД и без СД
+
+**F-max**
+
+```{r}
+kw.fmax <- kruskal.test(df$F, df$group)
+
+ggplot(df, aes(group, F))+
+  geom_boxplot()+
+  ggtitle(paste("Медианные занчения Fmax, p=", round(kw.fmax$p.value, 4)))+
+  xlab("")+ylab("")
+
+kw.fmax
+```
+
+**Fscan**
+
+```{r}
+kw.fscan <- kruskal.test(df$Fscan, df$group)
+
+ggplot(df, aes(group, Fscan))+
+  geom_boxplot()+
+  ggtitle(paste("Медианные занчения Fscan, p=", round(kw.fscan$p.value, 4)))+
+  xlab("")+ylab("")
+
+kw.fscan
+
+```
+
+### 4.1.2. По длительности СД (1- СД менее 5 лет, 2 – СД 5-10 лет, 3 – СД более 10 лет). Сравнить длительность СД в группе F0-2 и F3-4.
+
+```{r}
+less5 <- filter(SD, `давность СД`==1) %>% nrow() # 20
+less10 <- filter(SD, `давность СД`==2 ) %>% nrow() # 69
+more10 <- filter(SD, `давность СД`==3 ) %>% nrow() #28
+```
+
+менее 5 лет - `r less5`; от 5 до 10 - `r less10`.
+
+### 4.1.3. По терапии Сахарного диабета (СД). Сравнить терапию СД в группе F0-2 и F3-4
+
+```{r}
+SD$Fmax.group <- ifelse(SD$F <= 2, "0-2", "3-4")
+SD$Fmax.group <- factor(SD$Fmax.group)
+kxw <- kruskal.test(SD$`терапия СД`, SD$Fmax.group)
+group_by(SD, Fmax.group) %>% summarise(n=n())
+```
+
+p-value = `r kxw$p.value`
+
+### 4.1.4. По компенсации СД. Сравнить уровень glu в группе F0-2 и F3-4.
+
+```{r}
+kxw <- kruskal.test(SD$Glu, SD$Fmax.group)
+
+#############
+SD$Glu.m6 <- ifelse(SD$Glu <= 6, "glu.l6", "glu.m6")
+SD$Glu.m6 <- factor(SD$Glu.m6)
+kxw.glu6 <- kruskal.test(SD$F, SD$Glu.m6)
+kxwFs.glu6 <- kruskal.test(SD$Fscan, SD$Glu.m6)
+```
+
+По глюкозе: p-value = `r kxw$p.value`
+
+По Fmax (Glu <= 6 vs Glu > 6): p-value = `r kxw.glu6$p.value`
+
+По Fscan: p-value = `r kxwFs.glu6$p.value`
+ 
+## 4.3. Серологические маркеры фиброза (все лабораторные показатели)
+
+### Регрессионная модель F
+
+```{r}
+# predictors GG, A2M, AA1,  BB, GGT, ALT, AST, Glu, 	Cholesterol, Trigl,  Plt
+
+df$F.hard <- ifelse(df$F > 2, 1, 0)
+df$F.hard <- as.factor(df$F.hard)
+
+#cor ALT vs AST =  0.77
+
+for.reg <- df[,c("F.hard", "GG", "A2M", "AA1", "BB", "GGT", "ALT", "Glu", "Cholesterol", "Trigl", "Plt")]
+
+fit.F.hard <- glm(F.hard ~ ., data=for.reg[complete.cases(for.reg),c(1:6)], family = 'binomial')
+
+summary(fit.F.hard)
+```
+
+Полученная регрессионная модель выглядит так:
+
+$log(odds(ТФ)) = -10.11 - 4.64*GG + 7.77*A2M - 7.89*AA1 + 0.14*BB + 0.04*GGT$, где
+
+ТФ - тяжелый фиброз (по фибромаксу).
+
+Проверка эффективности модели - ROC и AUC
+
+```{r}
+library(ROCR)
+library(cvAUC)
+
+#s subset data
+for.reg.cc <- for.reg[complete.cases(for.reg),c(1:6)]
+
+# calculate probabilty of success
+for.reg.cc$F.hard.prob <- predict(object = fit.F.hard, type = "response")
+pred.fit.F.hard <- prediction(for.reg.cc$F.hard.prob, for.reg.cc$F.hard)
+
+# calculate TPR and FPR
+perf.fit.F.hard <- performance(pred.fit.F.hard ,"tpr","fpr")
+plot(perf.fit.F.hard, colorize=T , xlab='Доля ложноположительных результатов', ylab='Доля истинноположительных результатов')
+
+# get area under the ROC curve
+auc  <- performance(pred.fit.F.hard, measure = "auc") # 0.9916667
+accuracy <- performance(pred.fit.F.hard, measure = "acc")
+
+cvauc <- AUC(for.reg.cc$F.hard.prob, for.reg.cc$F.hard)
+# conf interval and SE
+auc.cis <- ci.cvAUC(for.reg.cc$F.hard.prob, for.reg.cc$F.hard, confidence = .95)
+# SE - 0.004926397
+# CI - 0.9820111 1.0000000
+# 0.95
+
+```
+
+$AUC = 0.9916667 (95\% CI = 0.9820111 - 1.00)$
+
+Специфичность, чувствительность и точность модели
+
+```{r}
+perf3  <- performance(pred.fit.F.hard, x.measure = "cutoff", measure = "spec")
+perf4  <- performance(pred.fit.F.hard, x.measure = "cutoff", measure = "sens")
+perf5  <- performance(pred.fit.F.hard, x.measure = "cutoff", measure = "acc")
+
+plot(perf3, col = "red", lwd =2, xlab='Вероятность', ylab='Специфичность')
+plot(add=T, perf4 , col = "steelblue", lwd =2)
+plot(add=T, perf5, lwd =2)
+
+legend(x = 0.6,y = 0.3, c("специфичность", "чувствительность", "точность"), 
+       lty = 1, col =c('red', 'steelblue', 'black'), bty = 'n', cex = 1, lwd = 2)
+# determine x coordinate manually!
+abline(v= 0.165, lwd = 2, lty=6)
+```
+
+Вертикальная линия отмечает оптимальное пороговое значение вероятности (0.165) для выбранной модели - это та точка, где сходтся значения специфичности, чувствительности и точности (аккуратности) нашей модели.
+То есть, это то значение веротяности получить ТФ, выше которого мы считаем, что ТФ будет (то есть формула дает нам предсказание "да, фиброз будет").
+
+----
+
+### Регрессионная модель Fscan
+
+```{r}
+# predictors GG, A2M, AA1,  BB, GGT, ALT, AST, Glu, 	Cholesterol, Trigl,  Plt
+
+df$Fscan.hard <- ifelse(df$Fscan > 2, 1, 0)
+df$Fscan.hard <- as.factor(df$Fscan.hard)
+
+#cor ALT vs AST =  0.77, remove AST
+
+for.reg2 <- df[,c("Fscan.hard", "GG", "A2M", "AA1", "BB", "GGT", "ALT", "Glu", "Cholesterol", "Trigl", "Plt")]
+
+fit.Fscan.hard <- glm(Fscan.hard ~ ., data=for.reg2[complete.cases(for.reg2),c(1:3,6)], family = 'binomial')
+
+summary(fit.Fscan.hard)
+```
+
+Полученная регрессионная модель выглядит так:
+
+$log(odds(ТФ)) = -3.35 - 1.34*GG + 1.65*A2M + 0.007*GGT$, где
+
+ТФ - тяжелый фиброз (по фиброскану).
+
+Проверка эффективности модели - ROC и AUC
+
+```{r}
+#library(ROCR)
+#library(cvAUC)
+
+#s subset data
+for.reg2.cc <- for.reg2[complete.cases(for.reg2),c(1:3,6)]
+
+# calculate probabilty of success
+for.reg2.cc$Fscan.hard.prob <- predict(object = fit.Fscan.hard, type = "response")
+pred.fit.Fscan.hard <- prediction(for.reg2.cc$Fscan.hard.prob, for.reg2.cc$Fscan.hard)
+
+# calculate TPR and FPR
+perf.fit.Fscan.hard <- performance(pred.fit.Fscan.hard ,"tpr","fpr")
+plot(perf.fit.Fscan.hard, colorize=T, xlab='Доля ложноположительных результатов', ylab='Доля истинноположительных результатов')
+
+# calculate PPV and NPV
+perf.fit.Fscan.hard.PV <- performance(pred.fit.Fscan.hard ,"ppv","npv")
+plot(perf.fit.Fscan.hard.PV, colorize=T, xlab='Negative predictive value', ylab='Positive predictive value')
+# PPV (cutoff=0.252) = 0.5762712
+# NPV (cutoff=0.252) = 0.8969072
+
+# get area under the ROC curve
+auc2  <- performance(pred.fit.Fscan.hard, measure = "auc") # 0.8461851
+accuracy2 <- performance(pred.fit.Fscan.hard, measure = "acc")
+
+cvauc2 <- AUC(for.reg2.cc$Fscan.hard.prob, for.reg2.cc$Fscan.hard) # 0.8461851
+# conf interval and SE
+auc.cis2 <- ci.cvAUC(for.reg2.cc$Fscan.hard.prob, for.reg2.cc$Fscan.hard, confidence = .95)
+# SE - 0.0399286
+# CI - 0.7679265 0.9244437
+# 0.95
+
+```
+
+$AUC = 0.8461851 (95\% CI = 0.7679265 - 0.9244437)$
+
+Специфичность, чувствительность и точность модели
+
+```{r}
+perf6  <- performance(pred.fit.Fscan.hard, x.measure = "cutoff", measure = "spec")
+perf7  <- performance(pred.fit.Fscan.hard, x.measure = "cutoff", measure = "sens")
+perf8  <- performance(pred.fit.Fscan.hard, x.measure = "cutoff", measure = "acc")
+
+plot(perf6, col = "red", lwd =2, xlab='Вероятность', ylab='Специфичность')
+plot(add=T, perf7 , col = "steelblue", lwd =2)
+plot(add=T, perf8, lwd =2)
+
+legend(x = 0.5,y = 0.3, c("специфичность", "чувствительность", "точность"), 
+       lty = 1, col =c('red', 'steelblue', 'black'), bty = 'n', cex = 1, lwd = 2)
+# determine x coordinate manually!
+abline(v= 0.252, lwd = 2, lty=6)
+
+spec <- perf6@y.values[[1]]
+spec[spec>0.7 & spec<0.8]
+
+sens <- perf7@y.values[[1]]
+sens[sens>0.7 & sens < 0.8]
+
+acc <- perf8@y.values[[1]]
+acc[acc>0.7 & acc <0.8]
+
+```
+
+Вертикальная линия отмечает оптимальное пороговое значение вероятности (0.252) для выбранной модели.
+Пояснения аналогичные.
+
+#### Примеры расчета вероятности согласно модели
+
+```{r}
+names(for.reg2.cc) <- c('Fscan тяжелый, 0-нет, 1-да', 'GG', 'A2M', 'GGT', 'Вероятность')
+kable(for.reg2.cc, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+#write.table(for.reg2.cc, 'fscan_prob.tsv', na='', row.names = F, sep='\t')
+```
+
+## 5.1 Через 2 года
+
+```{r}
+SD_dyn <- read_excel("~/hdd153gb/andrew/GoogleDrive/MCSC/polukhina/СД- динамика.xls")
+#nums <- c(1:15, 17, 19, 21,23)
+nums.names <- names(SD_dyn)[c(2:15, 17, 19, 21,23, 25, 28:32)]
+
+SD.cc <- SD_dyn[!is.na(SD_dyn$`1 вар`),]
+
+group_by(SD.cc, `1 вар`) %>% summarise(n=n())
+
+SD.cc <- SD_dyn[!is.na(SD_dyn$`2 вар`),]
+group_by(SD.cc, `2 вар`) %>% summarise(n=n())
+```
+
+При первом варианте только 4 наблюдения в группе "1" и 28 в группе "0". При таком соотношении, посчитать что-либо - несерьезная задача.
+
+При втором варианте - 12 в группе "1" и 19 в группе "0"
+
+```{r}
+nums <- c(2:15, 17, 19, 21,23, 25, 28:32)
+kws <- lapply(nums, function(x){
+  kruskal.test(SD.cc[,c(x, 38)])
+    })
+#kws <- lapply(nums.names, function(x){kruskal.test(data_all[,x], data_all$SD)})
+
+mws <- lapply(nums, function(x){
+  print(nums.names[x]);
+  wilcox.test(pull(SD.cc[SD.cc$`2 вар`==0, x]), pull(SD.cc[SD.cc$`2 вар`==1, x]))
+})
+pval <- c()
+statistic <- c()
+for (i in c(1 : length(kws))){
+  pval <- c(pval, mws[[i]]$p.value)
+  statistic <- c(statistic, mws[[i]]$statistic)
+}
+
+#means <- lapply(nums, function(x){median(SD.cc[,x])})
+
+kws.df <- data.frame("variable"=nums.names, "statistic"=statistic, "pval"=pval, "df"=rep(1, length(kws)))
+kws.df$significant <- ifelse(kws.df$pval < .05, "yes", "no")
+
+kable(kws.df, "html") %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+```{r}
+des2 <- describeBy(SD.cc[,c(2:15, 17, 19, 21,23, 25, 28:32)], group = SD.cc$var2, skew=F, quant=c(.5), IQR=TRUE, check=T)
+
+des2$no$variable <- rownames(des2$no)
+des2$yes$variable <- rownames(des2$yes)
+
+write.csv(des2$no,'descript2_no.csv')
+write.csv(des2$yes,'descript2_yes.csv')
+
+des.full <- full_join(kws.df, des2$no, by='variable')
+des.full <- full_join(des.full, des2$yes, by='variable')
+write.csv(des.full,'descript2_full.csv')
+```
+
+
+## GG
+
+```{r}
+load("~/hdd153gb/andrew/GoogleDrive/MCSC/polukhina/data2.RData")
+
+ggplot(filter(df, !is.na(hard.Fsc)), aes(hard.Fsc, GG))+geom_boxplot()+xlab('')
+```
+
+## 6.1 - BMI как предиктор
+
+```{r}
+setwd("~/Google Drive/MCSC/polukhina")
+load("~/Google Drive/MCSC/polukhina/data.RData")
+library(ggplot2)
+
+SD.cc$Fscan.hard <- ifelse(SD.cc$Fscan==3 | SD.cc$Fscan == 4, 'тяжелый фиброз', 'легкий фиброз')
+
+# there is a significant difference, p=0.008
+kruskal.test(SD.cc$BMI, SD.cc$Fscan.hard)
+
+SD.cc$Fscan.hard01 <- ifelse(SD.cc$Fscan.hard == 'тяжелый фиброз', 1, 0)
+fit.bmi <- glm(Fscan.hard01~BMI, data=SD.cc, family = 'binomial')
+# BMI and Intercept are significant
+summary(fit.bmi)
+# patients with no SD contribute to between-group difference in mean BMI
+ggplot(SD.cc, aes(Fscan.hard, BMI))+geom_boxplot()
+
+# OR
+kruskal.test(SD.cc$BMI, SD.cc$`2 вар`)
+
+fit.bmi2 <- glm(`2 вар`~BMI, data=SD.cc, family = 'binomial')
+summary(fit.bmi2)
+
+```
+
+# Графики
+
+Полученная регрессионная модель выглядит так:
+
+$log(odds(2 вар)) = -11.8195 + 0.3438*BMI$, где
+
+ТФ - тяжелый фиброз (по фиброскану).
+
+Проверка эффективности модели - ROC и AUC
+
+```{r}
+#library(ROCR)
+#library(cvAUC)
+
+# calculate probabilty of success
+SD.cc$var2.prob <- predict(object = fit.bmi2, type = "response")
+pred.fit.bmi2 <- prediction(SD.cc$var2.prob, SD.cc$`2 вар`)
+
+# calculate TPR and FPR
+perf.fit.bmi2 <- performance(pred.fit.bmi2 ,"tpr","fpr")
+plot(perf.fit.bmi2, colorize=T, xlab='Доля ложноположительных результатов', ylab='Доля истинноположительных результатов')
+
+# calculate PPV and NPV
+perf.fit.bmi2.PV <- performance(pred.fit.bmi2 ,"ppv","npv")
+plot(perf.fit.bmi2.PV, colorize=T, xlab='Negative predictive value', ylab='Positive predictive value')
+# PPV (cutoff=0.252) = 0.5762712
+# NPV (cutoff=0.252) = 0.8969072
+
+# get area under the ROC curve
+auc5  <- performance(pred.fit.bmi2, measure = "auc") #  0.7982456
+accuracy5 <- performance(pred.fit.bmi2, measure = "acc")
+
+#cvauc5 <- AUC(SD.cc$var2.prob, SD.cc$`2 вар`) # 0.8461851
+# conf interval and SE
+auc.cis5 <- ci.cvAUC(SD.cc$var2.prob, SD.cc$`2 вар`, confidence = .95)
+# SE - 0.0872564
+# CI -  0.6272262 0.9692650
+# 0.95
+
+```
+
+$AUC = 0.7982456 (95\% CI = 0.6272262 - 0.9692650)$
+
+Специфичность, чувствительность и точность модели
+
+```{r}
+perf6  <- performance(pred.fit.bmi2, x.measure = "cutoff", measure = "spec")
+perf7  <- performance(pred.fit.bmi2, x.measure = "cutoff", measure = "sens")
+perf8  <- performance(pred.fit.bmi2, x.measure = "cutoff", measure = "acc")
+
+plot(perf6, col = "red", lwd =2, xlab='Вероятность', ylab='Специфичность')
+plot(add=T, perf7 , col = "steelblue", lwd =2)
+plot(add=T, perf8, lwd =2)
+
+legend(x = 0.5,y = 0.3, c("специфичность", "чувствительность", "точность"), 
+       lty = 1, col =c('red', 'steelblue', 'black'), bty = 'n', cex = 1, lwd = 2)
+
+# determine x coordinate manually!
+abline(v= 0.252, lwd = 2, lty=6)
+
+# spec <- perf6@y.values[[1]]
+# spec[spec>0.7 & spec<0.8]
+# 
+# sens <- perf7@y.values[[1]]
+# sens[sens>0.7 & sens < 0.8]
+# 
+# acc <- perf8@y.values[[1]]
+# acc[acc>0.7 & acc <0.8]
+
+```
+
+# 7 Сравнение с FIB-4 и APRI
+
+## FIB-4
+
+$FIB4 = Age*АSТ/(Plt*sqrt(АLТ))$
+
+> Если  FIB-4 менее 1,45, то считать, что легкий фиброз ЛФ; если более 3,25, то считать, что ТФ
+
+```{r}
+df$Fscan.hard <- ifelse(df$Fscan > 2, 1, 0)
+df$Fscan.hard <- as.factor(df$Fscan.hard)
+fib.data <- df %>% select(Age, AST, Plt, ALT, Fscan.hard)
+
+fib.data$FIB4 <- (fib.data$Age*fib.data$AST)/(fib.data$Plt*sqrt(fib.data$ALT))
+fib.data <- filter(fib.data, FIB4 > 3.25 | FIB4 < 1.45) %>% filter(!is.na(Fscan.hard))
+fib.data$FIB4.hard.fibrosis <- ifelse(fib.data$FIB4 > 3.25, 1, 0)
+
+# sens = TP/(FN+TP)
+# spec = TN/(TN+FP)
+# acc = (TP+TN)/(TP+TN+FP+FN)
+fib.data$TP <- ifelse((fib.data$Fscan.hard == 1 & fib.data$FIB4.hard.fibrosis == 1), 1, 0)
+fib.data$TN <- ifelse((fib.data$Fscan.hard == 0 & fib.data$FIB4.hard.fibrosis == 0), 1, 0)
+fib.data$FN <- ifelse((fib.data$Fscan.hard == 1 & fib.data$FIB4.hard.fibrosis == 0), 1, 0)
+fib.data$FP <- ifelse((fib.data$Fscan.hard == 0 & fib.data$FIB4.hard.fibrosis == 1), 1, 0)
+TP <- sum(fib.data$TP); FP <- sum(fib.data$FP)
+TN <- sum(fib.data$TP); FN <- sum(fib.data$FN)
+
+sens <- TP/(FN+TP) # 0.48
+spec <- TN/(TN+FP) # 0.75
+acc <- (TP+TN)/(TP+TN+FP+FN) # 0.5853659
+
+# NO AUC:https://stats.stackexchange.com/questions/372236/what-is-the-formula-to-calculate-the-area-under-the-roc-curve-from-a-contingency
+```
+
+Результат следующий:
+
+Всего наблюдений: `r nrow(fib.data)`
+
+Чувствительность, sensitivity = `r sens`
+
+Специфичность, specificity = `r spec`
+
+Точность, accuracy = `r acc`
+
+## APRI
+
+$APRI = ((АSТ/35)*100)/PLT$
+
+> отношение имеющегося показателя АСТ к верхнему пределу нормы по АСТ (35) умножаем на 100 и делим на число тромбоцитов.
+
+> Если значение индекса больше 1.0, то вероятность значительного фиброза ТФ велика, если меньше 0.5, то с большой вероятностью можно утверждать об отсутствии значимого фиброза и тем более - цирроза (т.е. будет ЛФ)
+
+```{r}
+apri.data <- df %>% select(AST, Plt, Fscan.hard)
+apri.data$APRI <- (apri.data$AST / 35)*100 /apri.data$Plt
+apri.data <- filter(apri.data, APRI > 1 | APRI < 0.5) %>% filter(!is.na(Fscan.hard))
+apri.data$APRI.hard.fibrosis <- ifelse(apri.data$APRI > 1, 1, 0)
+
+# sens = TP/(FN+TP)
+# spec = TN/(TN+FP)
+# acc = (TP+TN)/(TP+TN+FP+FN)
+apri.data$TP <- ifelse((apri.data$Fscan.hard == 1 & apri.data$APRI.hard.fibrosis == 1), 1, 0)
+apri.data$TN <- ifelse((apri.data$Fscan.hard == 0 & apri.data$APRI.hard.fibrosis == 0), 1, 0)
+apri.data$FN <- ifelse((apri.data$Fscan.hard == 1 & apri.data$APRI.hard.fibrosis == 0), 1, 0)
+apri.data$FP <- ifelse((apri.data$Fscan.hard == 0 & apri.data$APRI.hard.fibrosis == 1), 1, 0)
+TP.apri <- sum(apri.data$TP); FP.apri <- sum(apri.data$FP)
+TN.apri <- sum(apri.data$TP); FN.apri <- sum(apri.data$FN)
+
+sens.apri <- TP.apri/(FN.apri+TP.apri) # 0.53
+spec.apri <- TN.apri/(TN.apri+FP.apri) # 0.68
+acc.apri <- (TP.apri+TN.apri)/(TP.apri+TN.apri+FP.apri+FN.apri) # 0.6
+
+```
+
+Результат следующий:
+
+Всего наблюдений: `r nrow(apri.data)`
+
+Чувствительность, sensitivity = `r sens.apri`
+
+Специфичность, specificity = `r spec.apri`
+
+Точность, accuracy = `r acc.apri`
+

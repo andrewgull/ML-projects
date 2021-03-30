@@ -32,6 +32,32 @@ Performance on test datset:
  - F-score = 0.97
  - AUC = 0.99
  
- 3. `weight_lifting_exercise.Rmd`- a data set from Coursera
+ 3. `weight_lifting_exercise.Rmd`- a data set from a [course](https://www.coursera.org/learn/practical-machine-learning) by Johns Hopkins University on Coursera
 
 compiled notebooks are in `./compiled`
+
+4. `./medical` notebooks with code for the Central Institute of Gastroenterology
+
+   4.1 `Angiodine.Rmd` - quality of prediction of fibrosis by the blood flowmeter 'Angiodine' compared to biopsy.
+
+    Several logit-regression models were trained:
+
+    - model 1: AUC = 0.68, PCCC = 0.80, Sens = 0.31, Spec = 1
+    - model 2: AUC = 0.88, PCCC = 0.90, Sens = 0.71, Spec = 1
+    - model 3: AUC = 1.00, PCCC = 0.99, Sens = 1, Spec = 1
+
+   4.2 `covid19_olfactory_loss.Rmd` - diagnostic value of smell loss for the diagnosis of COVID-19
+
+   - model 1: AUC = 0.52, Sens = 0.84, 1 - Spec = 0.88
+   - model 2: AUC = 0.56, Sens = 0.88, 1 - Spec = 0.76
+   
+![ROC model 2](./medical/figures/olfactory_loss_roc.png)
+
+   4.3 `Fibroscan.Rmd` - diagnostic quality of a method 'FibroScan' for the diagnosis of liver fibrosis.
+   
+   - model 1: AUC = 0.99 (95% CI=0.98−1.00)
+   - model 2: AUC = 0.85 (95% CI=0.77−0.92)
+
+![ROC model 1](./medical/figures/model_1_roc.png)
+
+![Sensitivity, specificity and accuracy, model 1](./medical/figures/model_1_ssa.png)
