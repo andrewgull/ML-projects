@@ -6,3 +6,4 @@ medical/Pre-eclampsia.html
 medical/.DS_Store
 medical/*.html
 medical/figures/.DS_Store
+*.xml
