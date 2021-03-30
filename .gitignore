@@ -1,4 +1,8 @@
-./idea/**
-./ipynb_checkpoints/**
-./medical/.DS_Store/**
-./medical/*.html
+idea/**
+ipynb_checkpoints/**
+medical/Pre-eclampsia.html
+*.iml
+*.xml
+medical/.DS_Store
+medical/*.html
+medical/figures/.DS_Store
