@@ -7,3 +7,10 @@ medical/.DS_Store
 medical/*.html
 medical/figures/.DS_Store
 *.xml
+.Rproj.user
+.ipynb_checkpoints/gender_voice_recognition-checkpoint.ipynb
+.ipynb_checkpoints/README-checkpoint.md
+.idea/misc.xml
+.ipynb_checkpoints/titanic_notebook-checkpoint.ipynb
+.idea/misc.xml
+*.xml
