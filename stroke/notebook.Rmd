@@ -1,0 +1,60 @@
+---
+title: "Stroke prediction"
+author: "AG"
+date: '2022-08-05'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+library(tidyverse)
+library(caret)
+#library(GGally)
+```
+
+## The data set
+
+### Read data
+
+```{r}
+df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddff", na = "N/A")
+df
+```
+
+In `smoking_status` Unknown should be changed to NA.
+
+Also, it can be ordered: never < formerly < smokes
+
+Other predictors seem to be OK
+
+### Process smoking_status
+
+```{r}
+df$smoking_status <- na_if(df$smoking_status, "Unknown")
+
+df$smoking_status <- fct_relevel(df$smoking_status, c("never smoked", "formerly smoked", "smokes"))
+```
+
+
+### skimr description
+
+Skip id column
+
+```{r}
+df$id <- NULL
+skimr::skim_to_wide(df)
+```
+
+### Pairs plot
+
+```{r pairs, fig.width=7, fig.height=7}
+GGally::ggpairs(df, aes(color = stroke, alpha=0.2, dotsize=0.02), 
+        upper = list(continuous = wrap("cor", size = 2.5)),
+        diag=list(continuous ="barDiag"))+
+  scale_color_brewer(palette = "Set1")+
+  scale_fill_brewer(palette = "Set1")
+```
+
+
+
+
