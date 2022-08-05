@@ -14,3 +14,4 @@ medical/figures/.DS_Store
 .ipynb_checkpoints/titanic_notebook-checkpoint.ipynb
 .idea/misc.xml
 *.xml
+.idea/misc.xml
