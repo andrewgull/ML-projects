@@ -10,16 +10,13 @@ knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
 library(tidyverse)
 library(caret)
 #library(GGally)
+library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
+
 ```
 
 ## The data set
 
 ### Read data
-
-```{r}
-df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddff", na = "N/A")
-df
-```
 
 In `smoking_status` Unknown should be changed to NA.
 
@@ -27,34 +24,115 @@ Also, it can be ordered: never < formerly < smokes
 
 Other predictors seem to be OK
 
-### Process smoking_status
-
-```{r}
-df$smoking_status <- na_if(df$smoking_status, "Unknown")
-
+```{r read}
+df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddcf", na = c("Unknown", "N/A"))
+# if you set smoking_status to factor in col_types, na() won't work
+df$smoking_status <- as_factor(df$smoking_status)
 df$smoking_status <- fct_relevel(df$smoking_status, c("never smoked", "formerly smoked", "smokes"))
+df
 ```
-
 
 ### skimr description
 
 Skip id column
 
-```{r}
+```{r desc}
 df$id <- NULL
 skimr::skim_to_wide(df)
 ```
 
+stroke is imbalanced!
+
+smoking has a lot of NAs!
+
 ### Pairs plot
 
-```{r pairs, fig.width=7, fig.height=7}
+```{r pairs, fig.width=7, fig.height=7, warning=FALSE, message=FALSE}
 GGally::ggpairs(df, aes(color = stroke, alpha=0.2, dotsize=0.02), 
-        upper = list(continuous = wrap("cor", size = 2.5)),
+        upper = list(continuous = GGally::wrap("cor", size = 2.5)),
         diag=list(continuous ="barDiag"))+
   scale_color_brewer(palette = "Set1")+
   scale_fill_brewer(palette = "Set1")
 ```
 
 
+## Normalization
+
+```{r}
+df_scaled <- df %>% select(avg_glucose_level, age, bmi) %>% scale() %>% data.frame()
+```
+
+## Dummies
+
+```{r}
+# select vars
+to_dum <- df %>% select(gender, ever_married, work_type, Residence_type, smoking_status)
+# make an obj
+dummies <- dummyVars(~ ., data=to_dum)
+# apply it
+df_dummy <- data.frame(predict(dummies, newdata=to_dum))
+
+head(df_dummy)
+```
+
+```{r}
+df_proc <- bind_cols(df_scaled, df_dummy, select(df, hypertension, heart_disease, stroke))
+df_proc
+```
+
+## Imputation
+
+I will use median imputation for BMI.
+
+Smoking status will not be processed.
+
+```{r}
+df_proc <- df_proc %>% 
+  mutate(bmi = ifelse(is.na(bmi), median(bmi, na.rm = TRUE), bmi))
+```
+
+# Modelling
+
+## Params tuning
+
+trainControl() specifically for ROC-optimization of the model, which is better when data is imbalanced
+
+```{r}
+fit_ctrl_xgb_roc <- trainControl(## 5-fold CV
+                           method = "repeatedcv",
+                           number = 5,
+                           repeats = 5, 
+                           allowParallel = T,
+                           classProbs = T,
+                           summaryFunction = twoClassSummary)
+```
+
+## Split data
+
+Imbalanced data
+
+```{r}
+set.seed(1234)
+sample_set <- createDataPartition(y = df_proc$stroke, p = .75, list = FALSE)
+df_train <- df_proc[sample_set,]
+df_test <- df_proc[-sample_set,]
+
+# DMwR::SMOTE for imbalanced data
+df_train <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.under = 200)
+```
+
+## Training and validation
+
+```{r}
+fit_xgb <- train(stroke ~ ., 
+                 data = df_train, 
+                 metric = "ROC", 
+                 method = "RF", 
+                 trControl = fit_ctrl_xgb_roc,
+                 verbosity = 0,
+                 verbose = FALSE)
+
+fit_xgb
+```
 
 
