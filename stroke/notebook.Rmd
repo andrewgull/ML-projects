@@ -108,13 +108,19 @@ df_proc <- df_proc %>%
 trainControl() specifically for ROC-optimization of the model, which is better when data is imbalanced
 
 ```{r}
-fit_ctrl_xgb_roc <- trainControl(## 5-fold CV
+fit_ctrl_xgb_roc <- trainControl(## 10-fold CV
                            method = "repeatedcv",
                            number = 10,
                            repeats = 10, 
                            allowParallel = T,
                            classProbs = T,
                            summaryFunction = twoClassSummary)
+
+fit_ctrl_xgb_acc <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           repeats = 10, 
+                           allowParallel = T)
 ```
 
 ## Split data
@@ -134,7 +140,7 @@ df_train <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.under 
 ## Training and validation
 
 ```{r}
-fit_xgb <- train(stroke ~ ., 
+fit_xgb_roc <- train(stroke ~ ., 
                  data = df_train, 
                  metric = "ROC", 
                  method = "rf", 
@@ -142,9 +148,23 @@ fit_xgb <- train(stroke ~ .,
                  verbosity = 0,
                  verbose = FALSE)
 
-fit_xgb
+fit_xgb_roc
 ```
 
+
+```{r}
+fit_xgb_acc <- train(stroke ~ ., 
+                 data = df_train, 
+                 metric = "ROC", 
+                 method = "rf", 
+                 trControl = fit_ctrl_xgb_acc,
+                 verbosity = 0,
+                 verbose = FALSE)
+
+fit_xgb_acc
+```
+
+---
 ```{r}
 save.image("workspace.RData")
 ```
