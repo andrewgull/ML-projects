@@ -110,8 +110,8 @@ trainControl() specifically for ROC-optimization of the model, which is better w
 ```{r}
 fit_ctrl_xgb_roc <- trainControl(## 5-fold CV
                            method = "repeatedcv",
-                           number = 5,
-                           repeats = 5, 
+                           number = 10,
+                           repeats = 10, 
                            allowParallel = T,
                            classProbs = T,
                            summaryFunction = twoClassSummary)
@@ -146,6 +146,6 @@ fit_xgb
 ```
 
 ```{r}
-save("workspace.RData")
+save.image("workspace.RData")
 ```
 
