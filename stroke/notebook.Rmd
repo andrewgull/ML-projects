@@ -29,6 +29,8 @@ df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffd
 # if you set smoking_status to factor in col_types, na() won't work
 df$smoking_status <- as_factor(df$smoking_status)
 df$smoking_status <- fct_relevel(df$smoking_status, c("never smoked", "formerly smoked", "smokes"))
+df$stroke <- factor(ifelse(df$stroke == 1, "yes", "no"), levels = c("no", "yes"))
+
 df
 ```
 
@@ -49,12 +51,12 @@ BMI's complete rate 0.96
 
 ### Pairs plot
 
-```{r pairs, fig.width=7, fig.height=7, warning=FALSE, message=FALSE}
-GGally::ggpairs(df, aes(color = stroke, alpha=0.2, dotsize=0.02), 
+```{r pairs, fig.width=10, fig.height=10, warning=FALSE, message=FALSE}
+GGally::ggpairs(df, aes(color = stroke, alpha = 0.2, dotsize = 0.02), 
         upper = list(continuous = GGally::wrap("cor", size = 2.5)),
-        diag=list(continuous ="barDiag"))+
-  scale_color_brewer(palette = "Set1")+
-  scale_fill_brewer(palette = "Set1")
+        diag = list(continuous = "barDiag")) +
+  scale_color_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = -1)
 ```
 
 
