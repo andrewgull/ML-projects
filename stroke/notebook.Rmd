@@ -105,7 +105,7 @@ df_proc <- df_proc %>%
 
 ## Params tuning
 
-trainControl() specifically for ROC-optimization of the model, which is better when data is imbalanced
+ROC-optimization is better when data is imbalanced
 
 ```{r}
 fit_ctrl_xgb_roc <- trainControl(## 10-fold CV
@@ -137,10 +137,17 @@ df_test <- df_proc[-sample_set,]
 df_train <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.under = 200)
 ```
 
+
+# RF
+
 ## Training and validation
 
+### ROC-optimized
+
 ```{r}
-fit_xgb_roc <- train(stroke ~ ., 
+set.seed(123)
+
+fit_rf_roc <- train(stroke ~ ., 
                  data = df_train, 
                  metric = "ROC", 
                  method = "rf", 
@@ -148,12 +155,15 @@ fit_xgb_roc <- train(stroke ~ .,
                  verbosity = 0,
                  verbose = FALSE)
 
-fit_xgb_roc
+fit_rf_roc
 ```
 
+### Accuracy-optimized
 
 ```{r}
-fit_xgb_acc <- train(stroke ~ ., 
+set.seed(123)
+
+fit_rf_acc <- train(stroke ~ ., 
                  data = df_train, 
                  metric = "Accuracy", 
                  method = "rf", 
@@ -161,8 +171,27 @@ fit_xgb_acc <- train(stroke ~ .,
                  verbosity = 0,
                  verbose = FALSE)
 
-fit_xgb_acc
+fit_rf_acc
 ```
+
+## XGB
+
+### ROC optimized
+
+```{r}
+set.seed(123)
+
+fit_xgb_roc <- train(stroke ~ ., 
+                 data = df_train, 
+                 method = "xgbDART",
+                 metric = "ROC", 
+                 trControl = fit_ctrl_xgb_roc,
+                 verbose = FALSE,
+                 verbosity = 0)
+
+fit_xgb_roc$bestTune
+```
+
 
 ---
 ```{r}
