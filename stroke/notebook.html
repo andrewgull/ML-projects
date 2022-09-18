@@ -26232,13 +26232,19 @@ df_proc</code></pre>
 <h2>Params tuning</h2>
 <p>trainControl() specifically for ROC-optimization of the model, which
 is better when data is imbalanced</p>
-<pre class="r"><code>fit_ctrl_xgb_roc &lt;- trainControl(## 5-fold CV
+<pre class="r"><code>fit_ctrl_xgb_roc &lt;- trainControl(## 10-fold CV
                            method = &quot;repeatedcv&quot;,
                            number = 10,
                            repeats = 10, 
                            allowParallel = T,
                            classProbs = T,
-                           summaryFunction = twoClassSummary)</code></pre>
+                           summaryFunction = twoClassSummary)
+
+fit_ctrl_xgb_acc &lt;- trainControl(## 10-fold CV
+                           method = &quot;repeatedcv&quot;,
+                           number = 10,
+                           repeats = 10, 
+                           allowParallel = T)</code></pre>
 </div>
 <div id="split-data" class="section level2">
 <h2>Split data</h2>
@@ -26253,7 +26259,7 @@ df_train &lt;- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.und
 </div>
 <div id="training-and-validation" class="section level2">
 <h2>Training and validation</h2>
-<pre class="r"><code>fit_xgb &lt;- train(stroke ~ ., 
+<pre class="r"><code>fit_xgb_roc &lt;- train(stroke ~ ., 
                  data = df_train, 
                  metric = &quot;ROC&quot;, 
                  method = &quot;rf&quot;, 
@@ -26261,7 +26267,7 @@ df_train &lt;- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.und
                  verbosity = 0,
                  verbose = FALSE)
 
-fit_xgb</code></pre>
+fit_xgb_roc</code></pre>
 <pre><code>## Random Forest 
 ## 
 ## 748 samples
@@ -26280,6 +26286,34 @@ fit_xgb</code></pre>
 ## 
 ## ROC was used to select the optimal model using the largest value.
 ## The final value used for the model was mtry = 2.</code></pre>
+<pre class="r"><code>fit_xgb_acc &lt;- train(stroke ~ ., 
+                 data = df_train, 
+                 metric = &quot;Accuracy&quot;, 
+                 method = &quot;rf&quot;, 
+                 trControl = fit_ctrl_xgb_acc,
+                 verbosity = 0,
+                 verbose = FALSE)
+
+fit_xgb_acc</code></pre>
+<pre><code>## Random Forest 
+## 
+## 748 samples
+##  17 predictor
+##   2 classes: &#39;no&#39;, &#39;yes&#39; 
+## 
+## No pre-processing
+## Resampling: Cross-Validated (10 fold, repeated 10 times) 
+## Summary of sample sizes: 673, 673, 673, 674, 673, 672, ... 
+## Resampling results across tuning parameters:
+## 
+##   mtry  Accuracy   Kappa    
+##    2    0.8021949  0.6043667
+##    9    0.7996578  0.5992875
+##   17    0.7912252  0.5824443
+## 
+## Accuracy was used to select the optimal model using the largest value.
+## The final value used for the model was mtry = 2.</code></pre>
+<hr />
 <pre class="r"><code>save.image(&quot;workspace.RData&quot;)</code></pre>
 </div>
 </div>
