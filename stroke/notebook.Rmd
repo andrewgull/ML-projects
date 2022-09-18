@@ -135,7 +135,7 @@ df_train <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.under 
 fit_xgb <- train(stroke ~ ., 
                  data = df_train, 
                  metric = "ROC", 
-                 method = "RF", 
+                 method = "rf", 
                  trControl = fit_ctrl_xgb_roc,
                  verbosity = 0,
                  verbose = FALSE)
