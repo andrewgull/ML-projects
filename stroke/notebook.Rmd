@@ -155,7 +155,7 @@ fit_xgb_roc
 ```{r}
 fit_xgb_acc <- train(stroke ~ ., 
                  data = df_train, 
-                 metric = "ROC", 
+                 metric = "Accuracy", 
                  method = "rf", 
                  trControl = fit_ctrl_xgb_acc,
                  verbosity = 0,
