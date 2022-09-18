@@ -41,9 +41,11 @@ df$id <- NULL
 skimr::skim_to_wide(df)
 ```
 
-stroke is imbalanced!
+Target 'stroke' is imbalanced!
 
-smoking has a lot of NAs!
+Smoking's complete rate 0.7
+
+BMI's complete rate 0.96
 
 ### Pairs plot
 
@@ -56,17 +58,21 @@ GGally::ggpairs(df, aes(color = stroke, alpha=0.2, dotsize=0.02),
 ```
 
 
-## Normalization
+## Scaling & Normalization
+
+Scale numeric features
 
 ```{r}
 df_scaled <- df %>% select(avg_glucose_level, age, bmi) %>% scale() %>% data.frame()
 ```
 
-## Dummies
+## Make Dummies
+
+I've decided to omit smoking_status completely - it won't be dummified
 
 ```{r}
 # select vars
-to_dum <- df %>% select(gender, ever_married, work_type, Residence_type, smoking_status)
+to_dum <- df %>% select(gender, ever_married, work_type, Residence_type)
 # make an obj
 dummies <- dummyVars(~ ., data=to_dum)
 # apply it
@@ -74,6 +80,8 @@ df_dummy <- data.frame(predict(dummies, newdata=to_dum))
 
 head(df_dummy)
 ```
+
+## Join scaled and dummies and the rest
 
 ```{r}
 df_proc <- bind_cols(df_scaled, df_dummy, select(df, hypertension, heart_disease, stroke))
@@ -109,7 +117,7 @@ fit_ctrl_xgb_roc <- trainControl(## 5-fold CV
 
 ## Split data
 
-Imbalanced data
+Imbalanced data - SMOTE
 
 ```{r}
 set.seed(1234)
@@ -135,4 +143,7 @@ fit_xgb <- train(stroke ~ .,
 fit_xgb
 ```
 
+```{r}
+save("workspace.RData")
+```
 
