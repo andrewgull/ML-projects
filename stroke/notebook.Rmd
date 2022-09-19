@@ -23,7 +23,7 @@ library(tidyverse)
 library(caret)
 #library(GGally)
 library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
-
+library(ROCR)
 ```
 
 ## The data set
@@ -137,7 +137,7 @@ fit_ctrl_xgb_acc <- trainControl(## 10-fold CV
 
 ## Split data
 
-Imbalanced data - SMOTE
+Imbalanced data - use SMOTE to create training data set, but not testing data set
 
 ```{r}
 set.seed(1234)
@@ -186,7 +186,36 @@ fit_rf_acc <- train(stroke ~ .,
 fit_rf_acc
 ```
 
-## XGB
+
+## Features importance
+
+```{r}
+imp_vars_rf <- varImp(fit_rf_roc)
+
+plot(imp_vars_rf, main="Variable Importance with RF")
+
+```
+
+
+## Testing
+
+ROC-optimized model
+
+```{r}
+predClasses_rf_roc <- predict(fit_rf_roc, newdata=df_test)
+
+cm_rf_roc <- confusionMatrix(data = predClasses_rf_roc, 
+                reference = df_test$stroke,
+                mode="everything",
+                positive="yes")
+
+cm_rf_roc
+```
+
+
+# XGB
+
+## Training and validation
 
 ### ROC optimized
 
@@ -202,6 +231,83 @@ fit_xgb_roc <- train(stroke ~ .,
                  verbosity = 0)
 
 fit_xgb_roc$bestTune
+```
+
+Show metrics
+
+```{r}
+fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma == 0, subsample == 1, rate_drop==0.5, colsample_bytree == 0.6, skip_drop == 0.95)
+```
+
+## Features importance
+
+```{r}
+imp_vars_xgb <- varImp(fit_xgb_roc)
+
+plot(imp_vars_xgb, main="Variable Importance with XGB")
+```
+
+
+## Testing
+
+```{r, warning=FALSE}
+predClasses_xgb_roc <- predict(fit_xgb_roc, newdata=df_test)
+
+cm_xgb_roc <- confusionMatrix(data = predClasses_xgb_roc, 
+                reference = df_test$stroke,
+                mode="everything",
+                positive="yes")
+
+cm_xgb_roc
+```
+
+# ROC & AUC
+
+```{r}
+get_roc <- function(fit.obj, testing.df){
+  pred_prob <- predict.train(fit.obj, newdata = testing.df, type="prob")
+  pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
+  perf_roc <- performance(pred_roc, measure="tpr", x.measure = "fpr")
+  return(list(perf_roc, pred_roc))
+}
+```
+
+## RF 
+
+```{r}
+# calculate ROC
+perf_pred <- get_roc(fit_rf_roc, df_test)
+perf_roc_rf <- perf_pred[[1]]
+pred_roc_rf <- perf_pred[[2]]
+
+# take AUC 
+auc_rf <- round(unlist(slot(performance(pred_roc_rf, measure = "auc"), "y.values")), 3)
+
+# plot
+plot(perf_roc_rf, main = "RF ROC curve", col = "steelblue", lwd = 3)
+abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
+legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
+
+```
+
+
+## XGB
+
+```{r}
+# calculate ROC
+perf_pred <- get_roc(fit_xgb_roc, df_test)
+perf_roc_xgb <- perf_pred[[1]]
+pred_roc_xgb <- perf_pred[[2]]
+
+
+# take AUC 
+auc_xgb <- round(unlist(slot(performance(pred_roc_xgb, measure = "auc"), "y.values")), 3)
+
+# plot
+plot(perf_roc_xgb, main = "XGB ROC curve", col = "steelblue", lwd = 3)
+abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
+legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
+
 ```
 
 
