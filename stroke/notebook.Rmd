@@ -26,9 +26,9 @@ library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar
 library(ROCR)
 ```
 
-## The data set
+# The data set
 
-### Read data
+## Read data
 
 In `smoking_status` Unknown should be changed to NA.
 
@@ -46,7 +46,7 @@ df$stroke <- factor(ifelse(df$stroke == 1, "yes", "no"), levels = c("no", "yes")
 df
 ```
 
-### skimr description
+## skimr description
 
 Skip id column
 
@@ -61,6 +61,15 @@ Smoking's complete rate 0.7
 
 BMI's complete rate 0.96
 
+One 'Other' gender to be removed
+
+```{r}
+df <- df %>% filter(gender != "Other")
+```
+
+
+## EDA
+
 ### Pairs plot
 
 ```{r pairs, fig.width=10, fig.height=10, warning=FALSE, message=FALSE}
@@ -71,6 +80,45 @@ GGally::ggpairs(df, aes(color = stroke, alpha = 0.2, dotsize = 0.02),
   scale_fill_brewer(palette = "Set1", direction = -1)
 ```
 
+### Detailed
+
+#### Stroke vs Gender
+
+```{r}
+gender <- df %>% group_by(stroke, gender) %>% summarize(N=n())
+
+ggplot(gender, aes(stroke, N)) +
+  geom_bar(aes(fill=gender), alpha = 0.8, stat = "identity", position = "fill")+
+  scale_fill_brewer(palette = "Set2", direction = -1)+
+  ylab("proportion")
+```
+
+Proportions in both stroke groups are roughly the same
+
+#### Stroke vs Age
+
+```{r}
+ggplot(df, aes(stroke, age)) + 
+  geom_violin(alpha=0.3) +
+  geom_jitter(alpha=0.2, size=0.8, width = 0.15, height = 0.1, aes(color = gender)) + 
+  geom_boxplot(alpha = 0.2) +
+  scale_color_brewer(palette = "Set2", direction = -1)
+```
+On average, age is higher among stroke-yes group, there is no interaction between age and gender
+
+#### Stroke vs Hypertension
+
+```{r}
+hyptens <- df %>% group_by(stroke, hypertension) %>% summarize(N=n())
+
+hyptens
+
+ggplot(hyptens, aes(stroke, N)) +
+  geom_bar(aes(fill=hypertension), alpha = 0.8, stat = "identity", position = "fill")+
+  scale_fill_brewer(palette = "Set2", direction = -1)+
+  ylab("proportion")
+```
+Hypertension occurres more often among stroke-yes
 
 ## Scaling & Normalization
 
@@ -82,7 +130,7 @@ df_scaled <- df %>% select(avg_glucose_level, age, bmi) %>% scale() %>% data.fra
 
 ## Make Dummies
 
-I've decided to omit smoking_status completely - it won't be dummified
+I've decided to omit smoking_status completely - it won't be *dummified*
 
 ```{r}
 # select vars
