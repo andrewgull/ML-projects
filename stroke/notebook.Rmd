@@ -82,6 +82,27 @@ GGally::ggpairs(df, aes(color = stroke, alpha = 0.2, dotsize = 0.02),
 
 ### Detailed
 
+#### Stroke vs Age
+
+```{r}
+ggplot(df, aes(stroke, age)) +
+  geom_boxplot(aes(fill = stroke), alpha = 0.5, varwidth = T, notch = T) +
+  geom_violin(aes(fill = stroke), alpha = 0.5) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+#### Stroke vs BMI
+
+```{r}
+ggplot(df, aes(stroke, bmi)) +
+  geom_boxplot(aes(fill = stroke), alpha = 0.5, varwidth = T, notch = T) +
+  geom_violin(aes(fill = stroke), alpha = 0.5) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+
 #### Stroke vs Gender
 
 ```{r bar1}
@@ -118,7 +139,7 @@ ggplot(hyptens, aes(stroke, N)) +
   scale_fill_brewer(palette = "Set2", direction = -1)+
   ylab("proportion")
 ```
-Hypertension occurres more often among stroke-yes
+Hypertension occurred more often among stroke-yes
 
 ## Scaling & Normalization
 
