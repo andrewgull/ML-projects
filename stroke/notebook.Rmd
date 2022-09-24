@@ -170,15 +170,15 @@ ROC-optimization is better when data is imbalanced
 ```{r}
 fit_ctrl_xgb_roc <- trainControl(## 10-fold CV
                            method = "repeatedcv",
-                           number = 10,
+                           number = 5,
                            repeats = 10, 
                            allowParallel = T,
                            classProbs = T,
                            summaryFunction = twoClassSummary)
 
-fit_ctrl_xgb_acc <- trainControl(## 10-fold CV
+fit_ctrl_xgb_kappa <- trainControl(## 10-fold CV
                            method = "repeatedcv",
-                           number = 10,
+                           number = 5,
                            repeats = 10, 
                            allowParallel = T)
 ```
@@ -193,8 +193,10 @@ sample_set <- createDataPartition(y = df_proc$stroke, p = .75, list = FALSE)
 df_train <- df_proc[sample_set,]
 df_test <- df_proc[-sample_set,]
 
-# DMwR::SMOTE for imbalanced data
-df_train <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.under = 200)
+# DMwR::SMOTE for imbalanced data: over=225 and under=150 give me 1:1 ratio
+df_train_smote <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 225, perc.under = 150)
+
+df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ```
 
 
@@ -205,29 +207,30 @@ df_train <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 100, perc.under 
 ### ROC-optimized
 
 ```{r}
-set.seed(123)
+set.seed(122)
 
 fit_rf_roc <- train(stroke ~ ., 
                  data = df_train, 
                  metric = "ROC", 
                  method = "rf", 
                  trControl = fit_ctrl_xgb_roc,
+                 tuneLength = 10,
                  verbosity = 0,
                  verbose = FALSE)
 
 fit_rf_roc
 ```
 
-### Accuracy-optimized
+### Kappa-optimized
 
 ```{r}
 set.seed(123)
 
 fit_rf_acc <- train(stroke ~ ., 
                  data = df_train, 
-                 metric = "Accuracy", 
+                 metric = "Kappa", 
                  method = "rf", 
-                 trControl = fit_ctrl_xgb_acc,
+                 trControl = fit_ctrl_xgb_kappa,
                  verbosity = 0,
                  verbose = FALSE)
 
@@ -267,7 +270,7 @@ cm_rf_roc
 
 ### ROC optimized
 
-```{r}
+```{r, eval=T}
 set.seed(123)
 
 fit_xgb_roc <- train(stroke ~ ., 
@@ -283,13 +286,13 @@ fit_xgb_roc$bestTune
 
 Show metrics
 
-```{r}
+```{r, eval=T}
 fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma == 0, subsample == 1, rate_drop==0.5, colsample_bytree == 0.6, skip_drop == 0.95)
 ```
 
 ## Features importance
 
-```{r}
+```{r, eval=T}
 imp_vars_xgb <- varImp(fit_xgb_roc)
 
 plot(imp_vars_xgb, main="Variable Importance with XGB")
