@@ -10,7 +10,7 @@ output:
     fig_width: 10
     fig_height: 6
     theme: cerulean
-    highlight: kate
+    highlight: espresso
     toc_float: yes
 editor_options: 
   markdown: 
@@ -50,7 +50,7 @@ df
 
 Skip id column
 
-```{r desc}
+```{r describe}
 df$id <- NULL
 skimr::skim_to_wide(df)
 ```
@@ -63,7 +63,7 @@ BMI's complete rate 0.96
 
 One 'Other' gender to be removed
 
-```{r}
+```{r filter}
 df <- df %>% filter(gender != "Other")
 ```
 
@@ -84,7 +84,7 @@ GGally::ggpairs(df, aes(color = stroke, alpha = 0.2, dotsize = 0.02),
 
 #### Stroke vs Gender
 
-```{r}
+```{r bar1}
 gender <- df %>% group_by(stroke, gender) %>% summarize(N=n())
 
 ggplot(gender, aes(stroke, N)) +
@@ -97,7 +97,7 @@ Proportions in both stroke groups are roughly the same
 
 #### Stroke vs Age
 
-```{r}
+```{r box1}
 ggplot(df, aes(stroke, age)) + 
   geom_violin(alpha=0.3) +
   geom_jitter(alpha=0.2, size=0.8, width = 0.15, height = 0.1, aes(color = gender)) + 
@@ -108,7 +108,7 @@ On average, age is higher among stroke-yes group, there is no interaction betwee
 
 #### Stroke vs Hypertension
 
-```{r}
+```{r bar2}
 hyptens <- df %>% group_by(stroke, hypertension) %>% summarize(N=n())
 
 hyptens
@@ -124,7 +124,7 @@ Hypertension occurres more often among stroke-yes
 
 Scale numeric features
 
-```{r}
+```{r scale}
 df_scaled <- df %>% select(avg_glucose_level, age, bmi) %>% scale() %>% data.frame()
 ```
 
@@ -132,7 +132,7 @@ df_scaled <- df %>% select(avg_glucose_level, age, bmi) %>% scale() %>% data.fra
 
 I've decided to omit smoking_status completely - it won't be *dummified*
 
-```{r}
+```{r dummy}
 # select vars
 to_dum <- df %>% select(gender, ever_married, work_type, Residence_type)
 # make an obj
@@ -145,7 +145,7 @@ head(df_dummy)
 
 ## Join scaled and dummies and the rest
 
-```{r}
+```{r join}
 df_proc <- bind_cols(df_scaled, df_dummy, select(df, hypertension, heart_disease, stroke))
 df_proc
 ```
@@ -156,7 +156,7 @@ I will use median imputation for BMI.
 
 Smoking status will not be processed.
 
-```{r}
+```{r impute}
 df_proc <- df_proc %>% 
   mutate(bmi = ifelse(is.na(bmi), median(bmi, na.rm = TRUE), bmi))
 ```
@@ -167,7 +167,7 @@ df_proc <- df_proc %>%
 
 ROC-optimization is better when data is imbalanced
 
-```{r}
+```{r tune}
 fit_ctrl_xgb_roc <- trainControl(## 10-fold CV
                            method = "repeatedcv",
                            number = 5,
@@ -187,7 +187,7 @@ fit_ctrl_xgb_kappa <- trainControl(## 10-fold CV
 
 Imbalanced data - use SMOTE to create training data set, but not testing data set
 
-```{r}
+```{r split}
 set.seed(1234)
 sample_set <- createDataPartition(y = df_proc$stroke, p = .75, list = FALSE)
 df_train <- df_proc[sample_set,]
@@ -206,7 +206,7 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 
 ### ROC-optimized
 
-```{r}
+```{r train.rf}
 set.seed(122)
 
 fit_rf_roc <- train(stroke ~ ., 
@@ -224,7 +224,7 @@ fit_rf_roc
 
 ## Features importance
 
-```{r}
+```{r featimp}
 imp_vars_rf <- varImp(fit_rf_roc)
 
 plot(imp_vars_rf, main="Variable Importance with RF")
@@ -236,7 +236,7 @@ plot(imp_vars_rf, main="Variable Importance with RF")
 
 ROC-optimized model
 
-```{r}
+```{r test}
 predClasses_rf_roc <- predict(fit_rf_roc, newdata=df_test)
 
 cm_rf_roc <- confusionMatrix(data = predClasses_rf_roc, 
@@ -254,7 +254,7 @@ cm_rf_roc
 
 ### ROC optimized
 
-```{r, eval=T, cache=T}
+```{r train.xgb, eval=T, cache=T}
 set.seed(123)
 
 fit_xgb_roc <- train(stroke ~ ., 
@@ -271,13 +271,13 @@ fit_xgb_roc$bestTune
 
 Show metrics
 
-```{r, eval=T, cache=T}
+```{r best.xgb, eval=T, cache=T}
 fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma == 0, subsample == 1, rate_drop==0.5, colsample_bytree == 0.6, skip_drop == 0.95)
 ```
 
 ## Features importance
 
-```{r, eval=T}
+```{r featimp, eval=T}
 imp_vars_xgb <- varImp(fit_xgb_roc)
 
 plot(imp_vars_xgb, main="Variable Importance with XGB")
@@ -286,7 +286,7 @@ plot(imp_vars_xgb, main="Variable Importance with XGB")
 
 ## Testing
 
-```{r, warning=FALSE}
+```{r test.xgb, warning=FALSE}
 predClasses_xgb_roc <- predict(fit_xgb_roc, newdata=df_test)
 
 cm_xgb_roc <- confusionMatrix(data = predClasses_xgb_roc, 
@@ -299,7 +299,7 @@ cm_xgb_roc
 
 # ROC & AUC
 
-```{r}
+```{r roc.fun}
 get_roc <- function(fit.obj, testing.df){
   pred_prob <- predict.train(fit.obj, newdata = testing.df, type="prob")
   pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
@@ -310,7 +310,7 @@ get_roc <- function(fit.obj, testing.df){
 
 ## RF 
 
-```{r}
+```{r roc.rf}
 # calculate ROC
 perf_pred <- get_roc(fit_rf_roc, df_test)
 perf_roc_rf <- perf_pred[[1]]
@@ -329,7 +329,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 ## XGB
 
-```{r}
+```{r roc.xgb}
 # calculate ROC
 perf_pred <- get_roc(fit_xgb_roc, df_test)
 perf_roc_xgb <- perf_pred[[1]]
@@ -348,7 +348,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 
 ---
-```{r}
+```{r save}
 save.image("workspace.RData")
 ```
 
