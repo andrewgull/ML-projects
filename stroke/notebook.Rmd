@@ -18,7 +18,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
 library(tidyverse)
 library(caret)
 #library(GGally)
@@ -214,27 +214,11 @@ fit_rf_roc <- train(stroke ~ .,
                  metric = "ROC", 
                  method = "rf", 
                  trControl = fit_ctrl_xgb_roc,
-                 tuneLength = 10,
+                 tuneGrid = expand.grid(.mtry = seq(14, 18, 1)),
                  verbosity = 0,
                  verbose = FALSE)
 
 fit_rf_roc
-```
-
-### Kappa-optimized
-
-```{r}
-set.seed(123)
-
-fit_rf_acc <- train(stroke ~ ., 
-                 data = df_train, 
-                 metric = "Kappa", 
-                 method = "rf", 
-                 trControl = fit_ctrl_xgb_kappa,
-                 verbosity = 0,
-                 verbose = FALSE)
-
-fit_rf_acc
 ```
 
 
@@ -270,7 +254,7 @@ cm_rf_roc
 
 ### ROC optimized
 
-```{r, eval=T}
+```{r, eval=T, cache=T}
 set.seed(123)
 
 fit_xgb_roc <- train(stroke ~ ., 
@@ -278,6 +262,7 @@ fit_xgb_roc <- train(stroke ~ .,
                  method = "xgbDART",
                  metric = "ROC", 
                  trControl = fit_ctrl_xgb_roc,
+                 tuneLength = 4,
                  verbose = FALSE,
                  verbosity = 0)
 
@@ -286,7 +271,7 @@ fit_xgb_roc$bestTune
 
 Show metrics
 
-```{r, eval=T}
+```{r, eval=T, cache=T}
 fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma == 0, subsample == 1, rate_drop==0.5, colsample_bytree == 0.6, skip_drop == 0.95)
 ```
 
