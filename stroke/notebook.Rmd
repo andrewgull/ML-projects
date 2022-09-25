@@ -259,7 +259,7 @@ fit_rf_roc
 
 ## Features importance
 
-```{r featimp}
+```{r featimp.rf}
 imp_vars_rf <- varImp(fit_rf_roc)
 
 plot(imp_vars_rf, main="Variable Importance with RF")
@@ -312,7 +312,7 @@ fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma 
 
 ## Features importance
 
-```{r featimp, eval=T}
+```{r featimp.xgb, eval=T}
 imp_vars_xgb <- varImp(fit_xgb_roc)
 
 plot(imp_vars_xgb, main="Variable Importance with XGB")
