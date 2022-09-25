@@ -3,13 +3,13 @@ title: "Stroke prediction"
 author: "AG"
 date: "last update: `r format(Sys.Date(), format = '%d %B %Y')`"
 output:
-  html_document:
+  prettydoc::html_pretty:
     toc: yes
     df_print: paged
     code_folding: hide
     fig_width: 10
     fig_height: 6
-    theme: cerulean
+    theme: cayman
     highlight: espresso
     toc_float: yes
 editor_options: 
@@ -59,7 +59,21 @@ Target 'stroke' is imbalanced!
 
 Smoking's complete rate 0.7
 
+#### How many snoking_status in each target class?
+
+```{r}
+df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
+```
+
+
 BMI's complete rate 0.96
+
+#### How many skipped BMI in each target class?
+
+```{r}
+df %>% filter(is.na(bmi)) %>% group_by(stroke) %>% summarise(N=n())
+```
+
 
 One 'Other' gender to be removed
 
@@ -92,6 +106,17 @@ ggplot(df, aes(stroke, age)) +
   xlab("")
 ```
 
+#### Stroke vs Age + Gender
+
+```{r box1}
+ggplot(df, aes(stroke, age)) + 
+  geom_violin(alpha=0.3) +
+  geom_jitter(alpha=0.2, size=0.8, width = 0.15, height = 0.1, aes(color = gender)) + 
+  geom_boxplot(alpha = 0.2) +
+  scale_color_brewer(palette = "Set2", direction = -1)
+```
+On average, age is higher among stroke-yes group, there is no interaction between age and gender
+
 #### Stroke vs BMI
 
 ```{r}
@@ -115,17 +140,6 @@ ggplot(gender, aes(stroke, N)) +
 ```
 
 Proportions in both stroke groups are roughly the same
-
-#### Stroke vs Age
-
-```{r box1}
-ggplot(df, aes(stroke, age)) + 
-  geom_violin(alpha=0.3) +
-  geom_jitter(alpha=0.2, size=0.8, width = 0.15, height = 0.1, aes(color = gender)) + 
-  geom_boxplot(alpha = 0.2) +
-  scale_color_brewer(palette = "Set2", direction = -1)
-```
-On average, age is higher among stroke-yes group, there is no interaction between age and gender
 
 #### Stroke vs Hypertension
 
@@ -228,7 +242,7 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ### ROC-optimized
 
 ```{r train.rf}
-set.seed(122)
+set.seed(123)
 
 fit_rf_roc <- train(stroke ~ ., 
                  data = df_train, 
