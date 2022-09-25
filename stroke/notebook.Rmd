@@ -155,6 +155,15 @@ ggplot(hyptens, aes(stroke, N)) +
 ```
 Hypertension occurred more often among stroke-yes
 
+```{r}
+ggplot(df, aes(stroke, avg_glucose_level)) +
+  geom_boxplot(aes(fill = stroke), alpha = 0.5, varwidth = T, notch = T) +
+  geom_violin(aes(fill = stroke), alpha = 0.5) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+
 ## Scaling & Normalization
 
 Scale numeric features
@@ -315,7 +324,7 @@ fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma 
 ```{r featimp.xgb, eval=T}
 imp_vars_xgb <- varImp(fit_xgb_roc)
 
-plot(imp_vars_xgb, main="Variable Importance with XGB")
+plot(imp_vars_xgb, main = "Variable Importance with XGB")
 ```
 
 
