@@ -391,6 +391,6 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ---
 ```{r save, eval=F}
-save.image("workspace.RData")
+save.image("data/workspace.RData")
 ```
 
