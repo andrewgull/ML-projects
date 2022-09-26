@@ -6,19 +6,17 @@ output:
   prettydoc::html_pretty:
     toc: yes
     df_print: paged
-    code_folding: hide
     fig_width: 10
     fig_height: 6
     theme: cayman
-    highlight: espresso
-    toc_float: yes
+    highlight: vignette
 editor_options: 
   markdown: 
     wrap: 72
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(tidyverse)
 library(caret)
 #library(GGally)
@@ -191,7 +189,7 @@ head(df_dummy)
 
 ```{r join}
 df_proc <- bind_cols(df_scaled, df_dummy, select(df, hypertension, heart_disease, stroke))
-df_proc
+head(df_proc)
 ```
 
 ## Imputation
@@ -250,11 +248,11 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 
 ### ROC-optimized
 
-```{r train.rf}
+```{r train.rf, eval=F}
 set.seed(123)
 
 fit_rf_roc <- train(stroke ~ ., 
-                 data = df_train, 
+                 data = df_train_smote, 
                  metric = "ROC", 
                  method = "rf", 
                  trControl = fit_ctrl_xgb_roc,
@@ -268,7 +266,7 @@ fit_rf_roc
 
 ## Features importance
 
-```{r featimp.rf}
+```{r featimp.rf, eval=F}
 imp_vars_rf <- varImp(fit_rf_roc)
 
 plot(imp_vars_rf, main="Variable Importance with RF")
@@ -280,7 +278,7 @@ plot(imp_vars_rf, main="Variable Importance with RF")
 
 ROC-optimized model
 
-```{r test}
+```{r test.rf, eval=F}
 predClasses_rf_roc <- predict(fit_rf_roc, newdata=df_test)
 
 cm_rf_roc <- confusionMatrix(data = predClasses_rf_roc, 
@@ -298,11 +296,11 @@ cm_rf_roc
 
 ### ROC optimized
 
-```{r train.xgb, eval=T, cache=T}
+```{r train.xgb, eval=T, cache=T, eval=F}
 set.seed(123)
 
 fit_xgb_roc <- train(stroke ~ ., 
-                 data = df_train, 
+                 data = df_train_smote, 
                  method = "xgbDART",
                  metric = "ROC", 
                  trControl = fit_ctrl_xgb_roc,
@@ -315,13 +313,13 @@ fit_xgb_roc$bestTune
 
 Show metrics
 
-```{r best.xgb, eval=T, cache=T}
+```{r best.xgb, eval=F, cache=T}
 fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma == 0, subsample == 1, rate_drop==0.5, colsample_bytree == 0.6, skip_drop == 0.95)
 ```
 
 ## Features importance
 
-```{r featimp.xgb, eval=T}
+```{r featimp.xgb, eval=F}
 imp_vars_xgb <- varImp(fit_xgb_roc)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -330,7 +328,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ## Testing
 
-```{r test.xgb, warning=FALSE}
+```{r test.xgb, warning=FALSE, eval=F}
 predClasses_xgb_roc <- predict(fit_xgb_roc, newdata=df_test)
 
 cm_xgb_roc <- confusionMatrix(data = predClasses_xgb_roc, 
@@ -343,7 +341,7 @@ cm_xgb_roc
 
 # ROC & AUC
 
-```{r roc.fun}
+```{r roc.fun, eval=F}
 get_roc <- function(fit.obj, testing.df){
   pred_prob <- predict.train(fit.obj, newdata = testing.df, type="prob")
   pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
@@ -354,7 +352,7 @@ get_roc <- function(fit.obj, testing.df){
 
 ## RF 
 
-```{r roc.rf}
+```{r roc.rf, eval=F}
 # calculate ROC
 perf_pred <- get_roc(fit_rf_roc, df_test)
 perf_roc_rf <- perf_pred[[1]]
@@ -373,7 +371,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 ## XGB
 
-```{r roc.xgb}
+```{r roc.xgb, eval=F}
 # calculate ROC
 perf_pred <- get_roc(fit_xgb_roc, df_test)
 perf_roc_xgb <- perf_pred[[1]]
@@ -392,7 +390,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 
 ---
-```{r save}
+```{r save, eval=F}
 save.image("workspace.RData")
 ```
 
