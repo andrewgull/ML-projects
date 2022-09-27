@@ -288,16 +288,79 @@ plot(imp_vars_rf, main="Variable Importance with RF")
 
 ## Testing
 
-Kappa-optimized model
+### ROC & AUC
+
+a function for roc-stuff
+
+```{r roc.fun}
+get_roc <- function(fit.obj, testing.df){
+  pred_prob <- predict.train(fit.obj, newdata = testing.df, type="prob")
+  pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
+  perf_roc <- performance(pred_roc, measure="tpr", x.measure = "fpr")
+  return(list(perf_roc, pred_roc))
+}
+```
+
+ROC plot
+
+```{r roc.rf, eval=T}
+# calculate ROC
+perf_pred <- get_roc(fit_rf, df_test)
+perf_rf <- perf_pred[[1]]
+pred_rf <- perf_pred[[2]]
+
+# take AUC 
+auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
+
+# plot
+plot(perf_rf, main = "RF ROC curve", col = "steelblue", lwd = 3)
+abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
+legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
+
+```
+
+So, we can adjust TPR/FPR cutoff to predict all strokes
+
+### TPR, FPR vs Probability cutoff
+
+At which probability cut-off, you'll get TPR = 1.0?
+
+```{r}
+# use pred_rf (pred_roc) object
+plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
+     col="steelblue", 
+     ylab = "Rate", 
+     xlab="Probability cutoff")
+
+plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
+     add = T, col = "red")
+
+legend(x = 0.7,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
+       lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
+
+abline(v= 0.07, lwd = 2, lty=6)
+```
+Vertical line at cutoff = 0.07 designates maximum TPR and maximum FPR. Ideal cutoff should be to the left of this line
 
 ### Predict classes 
 
-using cut-off 0.5 and calculate Confusion Matrix
+Using desired cut-off: we want to maximize TPR (Sensitivity, Recall)!
 
-```{r test.rf, eval=T}
-pred_classes_rf <- predict(fit_rf, newdata=df_test)
+According to the TPR/FPR plot (above) the optimal cutoff is ~ 0.07
 
-cm_rf <- confusionMatrix(data = pred_classes_rf, 
+```{r test.rf2}
+# predict probabilities
+pred_prob_rf <- predict(fit_rf, newdata=df_test, type = "prob")
+
+# choose your cut-off
+cutoff = 0.06
+
+# turn probabilities into classes
+pred_class_rf <- ifelse(pred_prob_rf$yes > cutoff, "yes", "no")
+
+pred_class_rf <- as.factor(pred_class_rf)
+
+cm_rf <- confusionMatrix(data = pred_class_rf, 
                 reference = df_test$stroke,
                 mode="everything",
                 positive="yes")
@@ -305,37 +368,11 @@ cm_rf <- confusionMatrix(data = pred_classes_rf,
 cm_rf
 ```
 
-### Predict probabilities
+With cutoff = 0.01, 3 stroke cases remain unidentified (Recall = 0.95)
 
-Using cut-off from ROC - FPR = 0.7
+With cutoff = 0.07, 1 stroke case remains unidentified (Recall = 0.98)
 
-**OBS!** Bring ROC analysis here
-
-```{r test.rf2}
-pred_prob_rf <- predict(fit_rf, newdata=df_test, type = "prob")
-
-# turn probs into classes
-
-pred_class_cutoff_rf <- map_chr(pred_prob_rf$yes, function(x){ 
- 
-   if (x >= 0.1){
-    return("yes")}
-  else {
-    return("no")
-  }})
-
-
-pred_class_cutoff_rf <- as.factor(pred_class_cutoff_rf)
-
-cm_cutoff_rf <- confusionMatrix(data = pred_class_cutoff_rf, 
-                reference = df_test$stroke,
-                mode="everything",
-                positive="yes")
-
-cm_cutoff_rf
-```
-
-
+With cutoff = 0.06, 0 stroke cases remain unidentified (Recall = 1.00)
 
 # XGB
 
@@ -375,48 +412,8 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ## Testing
 
-```{r test.xgb, warning=FALSE, eval=F}
-pred_classes_xgb_roc <- predict(fit_xgb_roc, newdata=df_test)
+### ROC & AUC
 
-cm_xgb_roc <- confusionMatrix(data = pred_classes_xgb_roc, 
-                reference = df_test$stroke,
-                mode="everything",
-                positive="yes")
-
-cm_xgb_roc
-```
-
-# ROC & AUC
-
-```{r roc.fun}
-get_roc <- function(fit.obj, testing.df){
-  pred_prob <- predict.train(fit.obj, newdata = testing.df, type="prob")
-  pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
-  perf_roc <- performance(pred_roc, measure="tpr", x.measure = "fpr")
-  return(list(perf_roc, pred_roc))
-}
-```
-
-## RF 
-
-```{r roc.rf, eval=T}
-# calculate ROC
-perf_pred <- get_roc(fit_rf, df_test)
-perf_rf <- perf_pred[[1]]
-pred_rf <- perf_pred[[2]]
-
-# take AUC 
-auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
-
-# plot
-plot(perf_rf, main = "RF ROC curve", col = "steelblue", lwd = 3)
-abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
-
-```
-
-
-## XGB
 
 ```{r roc.xgb, eval=F}
 # calculate ROC
@@ -435,7 +432,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ```
 
-
+# Save the workspace
 ---
 ```{r save, eval=T}
 save.image("data/workspace.RData")
