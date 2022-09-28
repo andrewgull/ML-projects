@@ -166,6 +166,9 @@ ggplot(df, aes(stroke, avg_glucose_level)) +
 Scale numeric features
 
 ```{r scale}
+# use caret::preProcess()
+# preProcValues <- preProcess(training, method = c("center", "scale"))
+
 df_scaled <- df %>% select(avg_glucose_level, age, bmi) %>% scale() %>% data.frame()
 ```
 
@@ -175,7 +178,7 @@ I've decided to omit smoking_status completely - it won't be *dummified*
 
 ```{r dummy}
 # select vars
-to_dum <- df %>% select(gender, ever_married, work_type, Residence_type)
+to_dum <- df %>% select(gender, ever_married, work_type, Residence_type, smoking_status)
 # make an obj
 dummies <- dummyVars(~ ., data=to_dum)
 # apply it
@@ -193,6 +196,8 @@ head(df_proc)
 
 ## Imputation
 
+### BMI
+
 I will use median imputation for BMI.
 
 Smoking status will not be processed.
@@ -201,6 +206,21 @@ Smoking status will not be processed.
 df_proc <- df_proc %>% 
   mutate(bmi = ifelse(is.na(bmi), median(bmi, na.rm = TRUE), bmi))
 ```
+
+
+### Smoking status
+
+Test imputation
+
+```{r, eval = F}
+
+test_imp <- preProcess(df[, -11], method = "knnImpute")
+
+imp_result <- predict(test_imp, df)
+
+```
+
+
 
 # Modelling
 
