@@ -169,8 +169,13 @@ Scale numeric features
 # use caret::preProcess()
 # preProcValues <- preProcess(training, method = c("center", "scale"))
 
-df_scaled <- df %>% select(avg_glucose_level, age, bmi) %>% scale() %>% data.frame()
+df_scaled <- df %>% 
+  select(avg_glucose_level, age, bmi) %>% 
+  scale() %>% 
+  data.frame()
+
 ```
+
 
 ## Make Dummies
 
@@ -213,11 +218,18 @@ df_proc <- df_proc %>%
 Test imputation
 
 ```{r, eval = F}
+# TRY MICE - preProcess kNN doesn't work with factors
+library(mice)
+df <- as.data.frame(df)
+df$smoking_status <- as.factor(df$smoking_status)
 
-test_imp <- preProcess(df[, -11], method = "knnImpute")
+
+test_imp <- preProcess(df, method = "knnImpute")
 
 imp_result <- predict(test_imp, df)
 
+
+imp_result
 ```
 
 
