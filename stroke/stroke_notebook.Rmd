@@ -614,7 +614,7 @@ cm_adb
 
 ### ROC optimized
 
-```{r train.xgb, eval=T, cache=T, eval=T}
+```{r train.xgb, eval=T, cache=T, eval=F}
 set.seed(123)
 
 fit_xgb_roc <- train(stroke ~ ., 
@@ -632,7 +632,7 @@ fit_xgb_roc$bestTune
 
 ## Features importance
 
-```{r featimp.xgb, eval=T}
+```{r featimp.xgb, eval=F}
 imp_vars_xgb <- varImp(fit_xgb_roc)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -644,7 +644,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 ### ROC & AUC
 
 
-```{r roc.xgb, eval=T}
+```{r roc.xgb, eval=F}
 # calculate ROC
 perf_pred_xgb <- get_roc(fit_xgb_roc, df_test)
 perf_roc_xgb <- perf_pred_xgb[[1]]
