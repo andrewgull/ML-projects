@@ -22,6 +22,8 @@ library(caret)
 #library(GGally)
 library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
 library(ROCR)
+
+THREADS <- 10
 ```
 
 ## Read data
@@ -308,7 +310,7 @@ For imbalanced classes
 ```{r train.rf, eval=T}
 library(doParallel)
 
-cl <- makePSOCKcluster(14)
+cl <- makePSOCKcluster(THREADS)
 registerDoParallel(cl)
 
 set.seed(123)
@@ -330,10 +332,10 @@ fit_rf
 ### ROC-optimized
 
 ```{r train.rf.roc, eval=T}
-cl <- makePSOCKcluster(14)
+cl <- makePSOCKcluster(THREADS)
 registerDoParallel(cl)
 
-set.seed(123)
+set.seed(120)
 
 fit_rf_roc <- train(stroke ~ ., 
                  data = df_train_smote, 
@@ -356,7 +358,7 @@ fit_rf_roc
 ```{r featimp.rf, eval=T}
 imp_vars_rf <- varImp(fit_rf)
 
-plot(imp_vars_rf, main="Variable Importance with RF")
+plot(imp_vars_rf, main = "Variable Importance with RF")
 
 ```
 
@@ -372,9 +374,9 @@ a function for roc-stuff
 
 ```{r roc.fun}
 get_roc <- function(fit.obj, testing.df){
-  pred_prob <- predict.train(fit.obj, newdata = testing.df, type="prob")
+  pred_prob <- predict.train(fit.obj, newdata = testing.df, type = "prob")
   pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
-  perf_roc <- performance(pred_roc, measure="tpr", x.measure = "fpr")
+  perf_roc <- performance(pred_roc, measure = "tpr", x.measure = "fpr")
   return(list(perf_roc, pred_roc))
 }
 ```
@@ -421,7 +423,7 @@ So, we can adjust TPR/FPR cutoff to predict all strokes
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r}
+```{r tpr.k}
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -434,43 +436,47 @@ plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v= 0.02, lwd = 2, lty=6)
+abline(v = 0.02, lwd = 2, lty=6)
 
 title("RF-k")
 ```
+
 Vertical line at cutoff = 0.02 designates maximum TPR and maximum FPR. Ideal cutoff should be to the left of this line
 
-```{r}
+```{r tpr.r}
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf_roc, measure = "tpr", x.measure = "cutoff"),
-     col="steelblue", 
+     col = "steelblue", 
      ylab = "Rate", 
-     xlab="Probability cutoff")
+     xlab = "Probability cutoff")
 
 plot(performance(pred_rf_roc, measure = "fpr", x.measure = "cutoff"), 
      add = T, col = "red")
 
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
+       lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v= 0.02, lwd = 2, lty=6)
+abline(v = 0.02, lwd = 2, lty=6)
 
 title("RF-r")
 ```
+
 Vertical line at 0.02
 
 ### Confusion matrix
 
+#### Kappa-optimized
+
 Using desired cut-off: we want to maximize TPR (Sensitivity, Recall)!
 
-According to the TPR/FPR plot (above) the optimal cutoff is ~ 0.07
+According to the TPR/FPR plot (above) the optimal cutoff is
 
-```{r test.rf2}
+```{r test.rf.k}
 # predict probabilities
 pred_prob_rf <- predict(fit_rf, newdata=df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.016
+cutoff = 0.01
 
 # turn probabilities into classes
 pred_class_rf <- ifelse(pred_prob_rf$yes > cutoff, "yes", "no")
@@ -479,11 +485,34 @@ pred_class_rf <- as.factor(pred_class_rf)
 
 cm_rf <- confusionMatrix(data = pred_class_rf, 
                 reference = df_test$stroke,
-                mode="everything",
-                positive="yes")
+                mode = "everything",
+                positive = "yes")
 
 cm_rf
 ```
+
+#### ROC-optimized
+
+```{r test.rf.r}
+# predict probabilities
+pred_prob_rf_roc <- predict(fit_rf_roc, newdata = df_test, type = "prob")
+
+# choose your cut-off
+cutoff = 0.01
+
+# turn probabilities into classes
+pred_class_rf_roc <- ifelse(pred_prob_rf_roc$yes > cutoff, "yes", "no")
+
+pred_class_rf_roc <- as.factor(pred_class_rf_roc)
+
+cm_rf <- confusionMatrix(data = pred_class_rf_roc, 
+                reference = df_test$stroke,
+                mode = "everything",
+                positive = "yes")
+
+cm_rf
+```
+
 
 # AdaBoost
 
@@ -496,7 +525,7 @@ For imbalanced classes
 ```{r train.lr, eval=T}
 set.seed(122)
 
-cl <- makePSOCKcluster(18)
+cl <- makePSOCKcluster(THREADS)
 registerDoParallel(cl)
 
 fit_adb <- train(stroke ~ ., 
@@ -504,7 +533,7 @@ fit_adb <- train(stroke ~ .,
                  metric = "Kappa", 
                  method = "AdaBoost.M1", 
                  trControl = fit_ctrl_kp10,
-                 tuneGrid = expand.grid(.maxdepth = seq(5, 15, 1), .mfinal = seq(100, 150, 50), .coeflearn = c("Freund")),
+                 tuneGrid = expand.grid(.maxdepth = seq(10, 20, 2), .mfinal = seq(150, 180, 10), .coeflearn = c("Freund")),
                  verbosity = 0,
                  verbose = FALSE)
 
@@ -552,7 +581,7 @@ plot(performance(pred_adb, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v= 0.16, lwd = 2, lty=6)
+abline(v = 0.1, lwd = 2, lty=6)
 
 title("AdaBoost.M1")
 ```
@@ -585,7 +614,7 @@ cm_adb
 
 ### ROC optimized
 
-```{r train.xgb, eval=T, cache=T, eval=F}
+```{r train.xgb, eval=T, cache=T, eval=T}
 set.seed(123)
 
 fit_xgb_roc <- train(stroke ~ ., 
@@ -593,22 +622,17 @@ fit_xgb_roc <- train(stroke ~ .,
                  method = "xgbDART",
                  metric = "ROC", 
                  trControl = fit_ctrl_roc,
-                 tuneLength = 4,
+                 tuneLength = 2,
                  verbose = FALSE,
                  verbosity = 0)
 
 fit_xgb_roc$bestTune
 ```
 
-Show metrics
-
-```{r best.xgb, eval=F, cache=T}
-fit_xgb_roc$results %>% filter(nrounds == 50, max_depth == 2, eta == 0.3, gamma == 0, subsample == 1, rate_drop==0.5, colsample_bytree == 0.6, skip_drop == 0.95)
-```
 
 ## Features importance
 
-```{r featimp.xgb, eval=F}
+```{r featimp.xgb, eval=T}
 imp_vars_xgb <- varImp(fit_xgb_roc)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -620,11 +644,11 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 ### ROC & AUC
 
 
-```{r roc.xgb, eval=F}
+```{r roc.xgb, eval=T}
 # calculate ROC
-perf_pred <- get_roc(fit_xgb_roc, df_test)
-perf_roc_xgb <- perf_pred[[1]]
-pred_roc_xgb <- perf_pred[[2]]
+perf_pred_xgb <- get_roc(fit_xgb_roc, df_test)
+perf_roc_xgb <- perf_pred_xgb[[1]]
+pred_roc_xgb <- perf_pred_xgb[[2]]
 
 
 # take AUC 
