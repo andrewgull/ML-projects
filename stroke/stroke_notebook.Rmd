@@ -630,10 +630,10 @@ fit_xgb_kp <- train(stroke ~ .,
                  metric = "Kappa", 
                  trControl = fit_ctrl_kp10,
                  tuneGrid = expand.grid(
-                   .nrounds = 50,
-                   .max_depth = seq(3, 8, 1),
+                   .nrounds = 100,
+                   .max_depth = seq(3, 15, 1),
                    .eta = 0.3,
-                   .gamma = seq(0.01, 0.03, 0.01),
+                   .gamma = 0.01,
                    .colsample_bytree = 1,
                    .min_child_weight = 1,
                    .subsample = 1
