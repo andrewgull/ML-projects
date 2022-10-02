@@ -161,6 +161,7 @@ ggplot(df, aes(age, avg_glucose_level)) +
   guides()
 ```
 
+**OBS!** Kids are mainly 'Unknown' smoking status; both target groups are divided into two clusters -- I'm curious why.
 
 #### Stroke vs Gender
 
