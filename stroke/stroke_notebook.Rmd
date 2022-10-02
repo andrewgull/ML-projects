@@ -29,7 +29,7 @@ library(ROCR)
 THREADS <- 16
 ```
 
-## Read data
+# The data
 
 In `smoking_status` Unknown should be changed to NA.
 
@@ -60,7 +60,7 @@ Target 'stroke' is imbalanced!
 
 Smoking's complete rate 0.7
 
-#### How many smoking_status in each target class?
+## How many smoking_status in each target class?
 
 ```{r}
 df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
@@ -69,7 +69,7 @@ df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
 
 BMI's complete rate 0.96
 
-#### How many skipped BMI in each target class?
+## How many skipped BMI in each target class?
 
 ```{r}
 df %>% filter(is.na(bmi)) %>% group_by(stroke) %>% summarise(N=n())
