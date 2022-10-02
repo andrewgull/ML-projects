@@ -11,7 +11,7 @@ output:
     fig_width: 10
     fig_height: 6
     theme: cerulean
-    highlight: kate
+    highlight: espresso
     toc_float: yes
 editor_options: 
   markdown: 
