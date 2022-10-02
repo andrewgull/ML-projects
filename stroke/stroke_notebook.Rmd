@@ -3,13 +3,16 @@ title: "Stroke prediction"
 author: "AG"
 date: "last update: `r format(Sys.Date(), format = '%d %B %Y')`"
 output:
-  prettydoc::html_pretty:
+  html_document:
     toc: yes
+    number_sections: true
     df_print: paged
+    code_folding: hide
     fig_width: 10
     fig_height: 6
-    theme: cayman
-    highlight: vignette
+    theme: cerulean
+    highlight: kate
+    toc_float: yes
 editor_options: 
   markdown: 
     wrap: 72
@@ -57,7 +60,7 @@ Target 'stroke' is imbalanced!
 
 Smoking's complete rate 0.7
 
-#### How many snoking_status in each target class?
+#### How many smoking_status in each target class?
 
 ```{r}
 df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
@@ -299,7 +302,7 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ```
 
 
-# RF
+# Random Forest
 
 ## Training and validation
 
@@ -436,7 +439,7 @@ plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v = 0.02, lwd = 2, lty=6)
+#abline(v = 0.02, lwd = 2, lty=6)
 
 title("RF-k")
 ```
@@ -456,7 +459,7 @@ plot(performance(pred_rf_roc, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v = 0.02, lwd = 2, lty=6)
+#abline(v = 0.02, lwd = 2, lty=6)
 
 title("RF-r")
 ```
@@ -520,9 +523,9 @@ cm_rf
 
 ### Kappa-optimized
 
-For imbalanced classes
+10-fold CV
 
-```{r train.lr, eval=T}
+```{r train.adb, eval=T}
 set.seed(122)
 
 cl <- makePSOCKcluster(THREADS)
@@ -549,7 +552,7 @@ fit_adb
 
 ### ROC curve
 
-```{r}
+```{r roc.adb}
 # calculate ROC
 perf_pred_adb <- get_roc(fit_adb, df_test)
 perf_adb <- perf_pred_adb[[1]]
@@ -568,7 +571,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_adb))
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r}
+```{r tpr.adb}
 # use pred_rf (pred_roc) object
 plot(performance(pred_adb, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -581,18 +584,18 @@ plot(performance(pred_adb, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v = 0.1, lwd = 2, lty=6)
+#abline(v = 0.1, lwd = 2, lty=6)
 
 title("AdaBoost.M1")
 ```
 
 ### Confusion matrix
 
-```{r}
+```{r cm.adb}
 pred_prob_adb <- predict(fit_adb, newdata=df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.16
+cutoff = 0.12
 
 # turn probabilities into classes
 pred_class_adb <- ifelse(pred_prob_adb$yes > cutoff, "yes", "no")
@@ -608,32 +611,44 @@ cm_adb
 ```
 
 
-# XGB
+# Extreme Gradient Boosting: xgbTree
+
+xgbTree has 7 parameters
 
 ## Training and validation
 
-### ROC optimized
+### Kappa-optimized
 
-```{r train.xgb, eval=T, cache=T, eval=F}
-set.seed(123)
+10-fold CV
 
-fit_xgb_roc <- train(stroke ~ ., 
+```{r train.xgb, eval=T, cache=T, eval=T}
+set.seed(121)
+
+fit_xgb_kp <- train(stroke ~ ., 
                  data = df_train_smote, 
-                 method = "xgbDART",
-                 metric = "ROC", 
-                 trControl = fit_ctrl_roc,
-                 tuneLength = 2,
+                 method = "xgbTree",
+                 metric = "Kappa", 
+                 trControl = fit_ctrl_kp10,
+                 tuneGrid = expand.grid(
+                   .nrounds = 50,
+                   .max_depth = seq(3, 8, 1),
+                   .eta = 0.3,
+                   .gamma = seq(0.01, 0.03, 0.01),
+                   .colsample_bytree = 1,
+                   .min_child_weight = 1,
+                   .subsample = 1
+                 ),
                  verbose = FALSE,
                  verbosity = 0)
 
-fit_xgb_roc$bestTune
+fit_xgb_kp$bestTune
 ```
 
 
 ## Features importance
 
-```{r featimp.xgb, eval=F}
-imp_vars_xgb <- varImp(fit_xgb_roc)
+```{r featimp.xgb, eval=T}
+imp_vars_xgb <- varImp(fit_xgb_kp)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
 ```
@@ -641,25 +656,66 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ## Testing
 
-### ROC & AUC
+### ROC curve
 
-
-```{r roc.xgb, eval=F}
+```{r roc.xgb, eval=T}
 # calculate ROC
-perf_pred_xgb <- get_roc(fit_xgb_roc, df_test)
-perf_roc_xgb <- perf_pred_xgb[[1]]
-pred_roc_xgb <- perf_pred_xgb[[2]]
+perf_pred_xgb <- get_roc(fit_xgb_kp, df_test)
+perf_xgb <- perf_pred_xgb[[1]]
+pred_xgb <- perf_pred_xgb[[2]]
 
 
 # take AUC 
-auc_xgb <- round(unlist(slot(performance(pred_roc_xgb, measure = "auc"), "y.values")), 3)
+auc_xgb <- round(unlist(slot(performance(pred_xgb, measure = "auc"), "y.values")), 3)
 
 # plot
-plot(perf_roc_xgb, main = "XGB ROC curve", col = "steelblue", lwd = 3)
+plot(perf_xgb, main = "XGB ROC curve", col = "steelblue", lwd = 3)
 abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
 legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ```
+
+### TPR v FPR
+
+```{r tpr.xgb}
+# use pred_xgb object
+plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
+     col = "steelblue", 
+     ylab = "Rate", 
+     xlab = "Probability cutoff")
+
+plot(performance(pred_xgb, measure = "fpr", x.measure = "cutoff"), 
+     add = T, col = "red")
+
+legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
+       lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
+
+#abline(v = 0.1, lwd = 2, lty=6)
+
+title("xgbTree")
+```
+
+### Confusion matrix
+
+```{r cm.xgb}
+pred_prob_xgb <- predict(fit_xgb_kp, newdata=df_test, type = "prob")
+
+# choose your cut-off
+cutoff = 0.12
+
+# turn probabilities into classes
+pred_class_xgb <- ifelse(pred_prob_xgb$yes > cutoff, "yes", "no")
+
+pred_class_xgb <- as.factor(pred_class_xgb)
+
+cm_xgb <- confusionMatrix(data = pred_class_xgb, 
+                reference = df_test$stroke,
+                mode = "everything",
+                positive = "yes")
+
+cm_xgb
+```
+
 
 # Save the workspace
 
