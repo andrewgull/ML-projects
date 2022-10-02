@@ -107,6 +107,10 @@ ggplot(df, aes(stroke, age)) +
   xlab("")
 ```
 
+**OBS!** There are observation with age much below 15 y.o., even close to 0!
+
+It is super unrealistic - see the plot below
+
 #### Stroke vs Age + Gender
 
 ```{r box1}
@@ -117,7 +121,9 @@ ggplot(df, aes(stroke, age)) +
   scale_color_brewer(palette = "Set2", direction = -1)
 ```
 
-On average, age is higher among stroke-yes group, there is no interaction between age and gender
+Look how many observations we have under 20 y.o. - and at the same time just two among strokes
+
+Remove everyone under 15-20 y.o.?
 
 #### Stroke vs BMI
 
@@ -127,6 +133,32 @@ ggplot(df, aes(stroke, bmi)) +
   geom_violin(aes(fill = stroke), alpha = 0.5) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
   xlab("")
+```
+
+BMI over 40 is the 3rd class of obesity - BMI over 75 should exist at all.
+
+Also, unrealistic outliers.
+
+Let's look at this weird points
+
+#### Age vs BMI vs Glucose
+
+```{r, fig.width=4}
+ggplot(df, aes(age, bmi)) +
+  geom_point(aes(color = avg_glucose_level), alpha = 0.4, size = 0.5) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  facet_grid(rows = vars(stroke)) +
+  guides()
+```
+
+#### Glucose vs Age
+
+```{r, fig.width=4}
+ggplot(df, aes(age, avg_glucose_level)) +
+  geom_point(aes(color = smoking_status), alpha = 0.6, size = 1) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  facet_grid(rows = vars(stroke)) +
+  guides()
 ```
 
 
