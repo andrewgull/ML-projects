@@ -26,7 +26,7 @@ library(caret)
 library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
 library(ROCR)
 
-THREADS <- 10
+THREADS <- 16
 ```
 
 ## Read data
