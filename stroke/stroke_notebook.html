@@ -3920,10 +3920,10 @@ Kappa-optimized</h3>
 <span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>                 <span class="at">metric =</span> <span class="st">&quot;Kappa&quot;</span>, </span>
 <span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a>                 <span class="at">trControl =</span> fit_ctrl_kp10,</span>
 <span id="cb44-8"><a href="#cb44-8" aria-hidden="true" tabindex="-1"></a>                 <span class="at">tuneGrid =</span> <span class="fu">expand.grid</span>(</span>
-<span id="cb44-9"><a href="#cb44-9" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.nrounds =</span> <span class="dv">50</span>,</span>
-<span id="cb44-10"><a href="#cb44-10" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.max_depth =</span> <span class="fu">seq</span>(<span class="dv">3</span>, <span class="dv">8</span>, <span class="dv">1</span>),</span>
+<span id="cb44-9"><a href="#cb44-9" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.nrounds =</span> <span class="dv">100</span>,</span>
+<span id="cb44-10"><a href="#cb44-10" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.max_depth =</span> <span class="fu">seq</span>(<span class="dv">3</span>, <span class="dv">15</span>, <span class="dv">1</span>),</span>
 <span id="cb44-11"><a href="#cb44-11" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.eta =</span> <span class="fl">0.3</span>,</span>
-<span id="cb44-12"><a href="#cb44-12" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.gamma =</span> <span class="fu">seq</span>(<span class="fl">0.01</span>, <span class="fl">0.03</span>, <span class="fl">0.01</span>),</span>
+<span id="cb44-12"><a href="#cb44-12" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.gamma =</span> <span class="fl">0.01</span>,</span>
 <span id="cb44-13"><a href="#cb44-13" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.colsample_bytree =</span> <span class="dv">1</span>,</span>
 <span id="cb44-14"><a href="#cb44-14" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.min_child_weight =</span> <span class="dv">1</span>,</span>
 <span id="cb44-15"><a href="#cb44-15" aria-hidden="true" tabindex="-1"></a>                   <span class="at">.subsample =</span> <span class="dv">1</span></span>
@@ -3934,7 +3934,7 @@ Kappa-optimized</h3>
 <span id="cb44-20"><a href="#cb44-20" aria-hidden="true" tabindex="-1"></a>fit_xgb_kp<span class="sc">$</span>bestTune</span></code></pre></div>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["nrounds"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["max_depth"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["eta"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["gamma"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["colsample_bytree"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["min_child_weight"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["subsample"],"name":[7],"type":["dbl"],"align":["right"]}],"data":[{"1":"50","2":"8","3":"0.3","4":"0.01","5":"1","6":"1","7":"1","_rn_":"16"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["nrounds"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["max_depth"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["eta"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["gamma"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["colsample_bytree"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["min_child_weight"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["subsample"],"name":[7],"type":["dbl"],"align":["right"]}],"data":[{"1":"100","2":"11","3":"0.3","4":"0.01","5":"1","6":"1","7":"1","_rn_":"9"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 </div>
