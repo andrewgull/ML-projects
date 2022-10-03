@@ -742,7 +742,7 @@ title("AdaBoost.M1")
 ### Confusion matrix
 
 ```{r cm.adb}
-pred_prob_adb <- predict(fit_adb, newdata=df_test, type = "prob")
+pred_prob_adb <- predict(fit_adb, newdata = df_test, type = "prob")
 
 # choose your cut-off
 cutoff = 0.12
@@ -754,8 +754,8 @@ pred_class_adb <- as.factor(pred_class_adb)
 
 cm_adb <- confusionMatrix(data = pred_class_adb, 
                 reference = df_test$stroke,
-                mode="everything",
-                positive="yes")
+                mode = "everything",
+                positive = "yes")
 
 cm_adb
 ```
@@ -771,7 +771,7 @@ xgbTree has 7 parameters
 
 10-fold CV
 
-```{r train.xgb, eval=T, cache=T, eval=T}
+```{r train.xgb, eval=T, eval=T}
 set.seed(121)
 
 fit_xgb_kp <- train(stroke ~ ., 
