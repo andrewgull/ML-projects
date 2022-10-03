@@ -772,7 +772,7 @@ xgbTree has 7 parameters
 fit_ctrl_kp10 <- trainControl(## 10-fold CV
                            method = "repeatedcv",
                            number = 10,
-                           repeats = 100, 
+                           repeats = 50, 
                            allowParallel = T)
 ```
 
