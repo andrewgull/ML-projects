@@ -19,7 +19,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
 library(tidyverse)
 library(caret)
 #library(GGally)
@@ -308,7 +308,7 @@ Since, modelling using all predictors and observations has given me very moderat
 Leave 'no kinds' version
 
 ```{r}
-df_trim <- df %>% filter(bmi < 60 )
+df_trim <- df %>% filter(bmi <= 60 )
 
 skimr::skim(df_trim)
 ```
@@ -339,7 +339,7 @@ Number of NAs in Smoking: `r sum(is.na(df_imp$smoking_status))`
 
 #### BMI
 
-```{r}
+```{r bmi.imp.plot}
 bmi_imp_comp <- bind_rows(select(df_trim, bmi, stroke) %>% mutate(type = rep("original", nrow(df_trim))),
           select(df_imp, bmi, stroke) %>% mutate(type = rep("imputed", nrow(df_imp))))
 
@@ -783,7 +783,7 @@ fit_ctrl_kp10 <- trainControl(## 10-fold CV
 
 10-fold CV
 
-```{r train.xgb, eval=T}
+```{r train.xgb, eval=T, cache=T}
 set.seed(121)
 
 fit_xgb_kp <- train(stroke ~ ., 
