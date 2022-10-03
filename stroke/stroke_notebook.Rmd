@@ -693,10 +693,12 @@ fit_adb <- train(stroke ~ .,
 # coeflearn=Freund was chosen by automatic grid search, mfinal choice comes from there too
 
 stopCluster(cl)
-
-fit_adb
-
 ```
+
+```{r}
+fit_adb
+```
+
 
 ## Testing
 
