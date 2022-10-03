@@ -19,7 +19,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(tidyverse)
 library(caret)
 #library(GGally)
@@ -305,10 +305,10 @@ Since, modelling using all predictors and observations has given me very moderat
 
 ## Trimming
 
-Try 'no kinds' version
+Leave 'no kinds' version
 
 ```{r}
-df_trim <- df %>% filter(bmi < 60, age > 20 )
+df_trim <- df %>% filter(bmi < 60 )
 
 skimr::skim(df_trim)
 ```
@@ -450,7 +450,7 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 
 ## Training and validation
 
-```{r}
+```{r, eval=F}
 # start a cluster
 library(doParallel)
 
@@ -464,7 +464,7 @@ registerDoParallel(cl)
 
 For imbalanced classes
 
-```{r train.rf, eval=T}
+```{r train.rf, eval=F}
 set.seed(123)
 
 fit_rf <- train(stroke ~ ., 
@@ -482,7 +482,7 @@ fit_rf
 
 ### ROC-optimized
 
-```{r train.rf.roc, eval=T}
+```{r train.rf.roc, eval=F}
 #cl <- makePSOCKcluster(THREADS)
 #registerDoParallel(cl)
 
@@ -506,7 +506,7 @@ fit_rf_roc
 
 ### Kappa-optimized model
 
-```{r featimp.rf, eval=T}
+```{r featimp.rf, eval=F}
 imp_vars_rf <- varImp(fit_rf)
 
 plot(imp_vars_rf, main = "Variable Importance with RF")
@@ -534,7 +534,7 @@ get_roc <- function(fit.obj, testing.df){
 
 #### ROC-curve for kappa-optimized model
 
-```{r roc.rf, eval=T}
+```{r roc.rf, eval=F}
 # calculate ROC
 perf_pred <- get_roc(fit_rf, df_test)
 perf_rf <- perf_pred[[1]]
@@ -552,7 +552,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 #### ROC-curve for ROC-optimized model
 
-```{r roc.rf.roc, eval=T}
+```{r roc.rf.roc, eval=F}
 # calculate ROC
 perf_pred_roc <- get_roc(fit_rf_roc, df_test)
 perf_rf_roc <- perf_pred_roc[[1]]
@@ -574,7 +574,7 @@ So, we can adjust TPR/FPR cutoff to predict all strokes
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r tpr.k}
+```{r tpr.k, eval=F}
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -594,7 +594,7 @@ title("RF-k")
 
 Vertical line at cutoff = 0.02 designates maximum TPR and maximum FPR. Ideal cutoff should be to the left of this line
 
-```{r tpr.r}
+```{r tpr.r, eval=F}
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf_roc, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -622,7 +622,7 @@ Using desired cut-off: we want to maximize TPR (Sensitivity, Recall)!
 
 According to the TPR/FPR plot (above) the optimal cutoff is
 
-```{r test.rf.k}
+```{r test.rf.k, eval=F}
 # predict probabilities
 pred_prob_rf <- predict(fit_rf, newdata=df_test, type = "prob")
 
@@ -644,7 +644,7 @@ cm_rf
 
 #### ROC-optimized
 
-```{r test.rf.r}
+```{r test.rf.r, eval=F}
 # predict probabilities
 pred_prob_rf_roc <- predict(fit_rf_roc, newdata = df_test, type = "prob")
 
