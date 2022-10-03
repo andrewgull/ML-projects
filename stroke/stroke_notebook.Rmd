@@ -19,7 +19,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
 library(tidyverse)
 library(caret)
 #library(GGally)
@@ -35,30 +35,38 @@ In `smoking_status` Unknown should be changed to NA.
 
 Also, it can be ordered: never < formerly < smokes
 
+`ever_married` can be recoded as 0/1 in accordance with `heart_disease` and `hypertension`
+
 Other predictors seem to be OK
 
 ```{r read}
 df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddcf", na = c("Unknown", "N/A"))
+
 # if you set smoking_status to factor in col_types, na() won't work
 df$smoking_status <- as_factor(df$smoking_status)
 df$smoking_status <- fct_relevel(df$smoking_status, c("never smoked", "formerly smoked", "smokes"))
+
+# married
+df$ever_married <- factor(if_else(df$ever_married == "Yes", 1, 0))
+
+# for models working properly
 df$stroke <- factor(ifelse(df$stroke == 1, "yes", "no"), levels = c("no", "yes"))
 
 df
 ```
 
-## skimr description
+## Descriptive statistics
 
 Skip id column
 
 ```{r describe}
 df$id <- NULL
-skimr::skim_to_wide(df)
+skimr::skim(df)
 ```
 
 Target 'stroke' is imbalanced!
 
-Smoking's complete rate 0.7
+'smoking_status' completeness rate 0.7
 
 ## How many smoking_status in each target class?
 
@@ -107,9 +115,11 @@ ggplot(df, aes(stroke, age)) +
   xlab("")
 ```
 
-**OBS!** There are observation with age much below 15 y.o., even close to 0!
+**OBS!** There are observation with age much below 20 y.o., even close to 0!
 
-It is super unrealistic - see the plot below
+These are very young kids or babies - should we even include them in the analysis?
+
+If so, it will be prediction for adults. Also, stroke in kids probably has very different causes compared to stroke in adults/old folk.
 
 #### Stroke vs Age + Gender
 
@@ -121,9 +131,19 @@ ggplot(df, aes(stroke, age)) +
   scale_color_brewer(palette = "Set2", direction = -1)
 ```
 
-Look how many observations we have under 20 y.o. - and at the same time just two among strokes
+#### Stroke vs Glucose
 
-Remove everyone under 15-20 y.o.?
+```{r}
+ggplot(df, aes(stroke, avg_glucose_level)) +
+  geom_boxplot(aes(fill = stroke), alpha = 0.5, varwidth = T, notch = T) +
+  geom_violin(aes(fill = stroke), alpha = 0.5) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+This average glucose level is probably the results of fasting blood sugar test
+
+If I correctly understand this [CDC information](https://www.cdc.gov/diabetes/basics/getting-tested.html#:~:text=Fasting%20Blood%20Sugar%20Test&text=A%20fasting%20blood%20sugar%20level,higher%20indicates%20you%20have%20diabetes.) on diabetes, values greater than 126 is evidence of diabetes.  But 250? Is it realistic?
 
 #### Stroke vs BMI
 
@@ -135,9 +155,7 @@ ggplot(df, aes(stroke, bmi)) +
   xlab("")
 ```
 
-BMI over 40 is the 3rd class of obesity - BMI over 75 should exist at all.
-
-Also, unrealistic outliers.
+BMI over 40 is the 3rd class of obesity - BMI over 75 should not exist at all.
 
 Let's look at this weird points
 
@@ -145,13 +163,15 @@ Let's look at this weird points
 
 ```{r}
 ggplot(df, aes(age, bmi)) +
-  geom_point(aes(color = avg_glucose_level), alpha = 0.4, size = 0.5) +
+  geom_point(aes(color = stroke), alpha = 0.8, size = 0.5) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
   facet_grid(rows = vars(stroke)) +
-  guides()
+  guides(color = "none")
 ```
 
-#### Glucose vs Age
+Patients with BMI over 75 are also very young. Suspicious.
+
+#### Glucose vs Age + smoking
 
 ```{r}
 ggplot(df, aes(age, avg_glucose_level)) +
@@ -163,14 +183,41 @@ ggplot(df, aes(age, avg_glucose_level)) +
 
 **OBS!** Kids are mainly 'Unknown' smoking status; both target groups are divided into two clusters -- I'm curious why.
 
+It is not gender, nor heart disease or any other factor we have in the data set.
+
+#### Age vs Smoking
+
+```{r}
+ggplot(df, aes(smoking_status, age)) +
+  geom_boxplot(aes(fill = stroke), alpha = 0.5, varwidth = T, notch = T) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+Kids are mainly non-smokers of course. Note the same two outliers of age below 20 in stroke-yes
+
+#### Glucose vs BMI
+
+```{r}
+ggplot(df, aes(avg_glucose_level, bmi)) +
+  geom_point(aes(color = age), alpha = 0.6, size = 1) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  facet_grid(rows = vars(stroke)) +
+  guides()
+```
+
+BMI outliers: super high BMI but super low glucose levels? How's that possible?
+
+Can it be a bias introduced by testing protocol misuse? Like instead of measuring glucose *before* eating, in some samples it was done *after* eating?
+
 #### Stroke vs Gender
 
 ```{r bar1}
 gender <- df %>% group_by(stroke, gender) %>% summarize(N=n())
 
 ggplot(gender, aes(stroke, N)) +
-  geom_bar(aes(fill=gender), alpha = 0.8, stat = "identity", position = "fill")+
-  scale_fill_brewer(palette = "Set2", direction = -1)+
+  geom_bar(aes(fill=gender), alpha = 0.8, stat = "identity", position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = -1) +
   ylab("proportion")
 ```
 
@@ -179,25 +226,94 @@ Proportions in both stroke groups are roughly the same
 #### Stroke vs Hypertension
 
 ```{r bar2}
-hyptens <- df %>% group_by(stroke, hypertension) %>% summarize(N=n())
-
-hyptens
+hyptens <- df %>% group_by(stroke, hypertension) %>% summarize(N = n())
 
 ggplot(hyptens, aes(stroke, N)) +
-  geom_bar(aes(fill=hypertension), alpha = 0.8, stat = "identity", position = "fill")+
-  scale_fill_brewer(palette = "Set2", direction = -1)+
+  geom_bar(aes(fill = hypertension), alpha = 0.8, stat = "identity", position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = -1) +
   ylab("proportion")
 ```
 
-Hypertension occurred more often among stroke-yes
+Hypertension occurred more often in stroke-yes
+
+#### Stroke vs Heart Disease
 
 ```{r}
-ggplot(df, aes(stroke, avg_glucose_level)) +
-  geom_boxplot(aes(fill = stroke), alpha = 0.5, varwidth = T, notch = T) +
-  geom_violin(aes(fill = stroke), alpha = 0.5) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
-  xlab("")
+heart <- df %>% group_by(stroke, heart_disease) %>% summarize(N=n())
+
+ggplot(heart, aes(stroke, N)) +
+  geom_bar(aes(fill = heart_disease), alpha = 0.8, stat = "identity", position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = 1) +
+  ylab("proportion")
 ```
+
+#### Stroke vs Ever Married
+
+```{r}
+married <- df %>% group_by(stroke, ever_married) %>% summarize(N=n())
+
+ggplot(married, aes(stroke, N)) +
+  geom_bar(aes(fill = ever_married), alpha = 0.8, stat = "identity", position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = -1) +
+  ylab("proportion")
+```
+
+Marriage is bad :)
+
+#### Stroke vs Work Type
+
+```{r}
+work <- df %>% group_by(stroke, work_type) %>% summarize(N=n())
+
+ggplot(work, aes(stroke, N)) +
+  geom_bar(aes(fill = work_type), alpha = 0.8, stat = "identity", position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = 1) +
+  ylab("proportion")
+```
+
+It's good to be a child
+
+#### Stroke vs Residence Type
+
+```{r}
+residence <- df %>% group_by(stroke, Residence_type) %>% summarize(N=n())
+
+ggplot(residence, aes(stroke, N)) +
+  geom_bar(aes(fill = Residence_type), alpha = 0.8, stat = "identity", position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = 1) +
+  ylab("proportion")
+```
+
+#### Stroke vs Smoking
+
+```{r}
+smoking <- df %>% group_by(stroke, smoking_status) %>% summarize(N=n())
+
+ggplot(smoking, aes(stroke, N)) +
+  geom_bar(aes(fill = smoking_status), alpha = 0.8, stat = "identity", position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = 1) +
+  ylab("proportion")
+```
+
+### Conclusions
+
+There are several suspicious outliers (like in BMI and glucose). I can safely remove BMI > 75, maybe even BMI > 60 (Remember that  BMI > 40 is the highest class of obesity).
+
+What is less safe - it's removing non-adults (younger than 20 y.o.). On one hand they provide valid information (age is very important predictor), on the other hand their stroke cases are really sus and a lot of predictors do not have sense (or are obvious NAs) for non-adults (like smoking, marriage status, employment type, residence type etc.); model-based imputation of smoking_status in children doesn't have sense as well, I should rather replace with "never smoked".
+
+Since, modelling using all predictors and observations has given me very moderate results (TPR = 1 comes with very high FPR and very low probability cutoff close to 0), I will try various trimming of the data.
+
+## Trimming
+
+Try 'no kinds' version
+
+```{r}
+df_trim <- df %>% filter(bmi < 60, age > 20 )
+
+skimr::skim(df_trim)
+```
+
+BMI is complete, in total approx. 2000 observations are gone
 
 ## Imputation
 
@@ -210,25 +326,25 @@ It uses `polr` - proportional odds model - for `smoking_status` and `pmm` - pred
 ```{r, eval = T, message=FALSE}
 library(mice)
 
-imp_mice <- mice(df)
+imp_mice <- mice(df_trim)
 df_imp <- complete(imp_mice)
 
 ```
 
 Number of NAs in BMI: `r sum(is.na(df_imp$bmi))`
 
-Number of NAs in Smoking `r sum(is.na(df_imp$smoking_status))`
+Number of NAs in Smoking: `r sum(is.na(df_imp$smoking_status))`
 
 ### Check distributions
 
 #### BMI
 
 ```{r}
-bmi_imp_comp <- bind_rows(select(df, bmi, stroke) %>% mutate(type = rep("original", nrow(df))),
+bmi_imp_comp <- bind_rows(select(df_trim, bmi, stroke) %>% mutate(type = rep("original", nrow(df_trim))),
           select(df_imp, bmi, stroke) %>% mutate(type = rep("imputed", nrow(df_imp))))
 
 ggplot(bmi_imp_comp, aes(bmi)) +
-  geom_histogram(aes(fill=type), alpha=0.8) +
+  geom_histogram(aes(fill = type), alpha = 0.8) +
   facet_grid(cols = vars(stroke))
 ```
 
@@ -237,7 +353,7 @@ Means have not changed, which is good, I suppose.
 #### Smoking
 
 ```{r}
-smoke_imp_comp <- bind_rows(select(df, smoking_status, stroke) %>% mutate(type = rep("original", nrow(df))),
+smoke_imp_comp <- bind_rows(select(df_trim, smoking_status, stroke) %>% mutate(type = rep("original", nrow(df_trim))),
           select(df_imp, smoking_status, stroke) %>% mutate(type = rep("imputed", nrow(df_imp))))
 
 ggplot(smoke_imp_comp, aes(smoking_status)) +
@@ -272,11 +388,11 @@ I've decided to omit smoking_status completely - it won't be *dummified*
 
 ```{r dummy}
 # select vars
-to_dum <- df_imp %>% select(gender, ever_married, work_type, Residence_type, smoking_status)
+to_dum <- df_imp %>% select(gender, work_type, Residence_type, smoking_status)
 # make an obj
-dummies <- dummyVars(~ ., data=to_dum)
+dummies <- dummyVars(~ ., data = to_dum)
 # apply it
-df_dummy <- data.frame(predict(dummies, newdata=to_dum))
+df_dummy <- data.frame(predict(dummies, newdata = to_dum))
 
 head(df_dummy)
 ```
@@ -284,7 +400,7 @@ head(df_dummy)
 ## Join scaled and dummies and the rest
 
 ```{r join}
-df_proc <- bind_cols(df_scaled, df_dummy, select(df, hypertension, heart_disease, stroke))
+df_proc <- bind_cols(df_scaled, df_dummy, select(df_trim, hypertension, heart_disease, ever_married, stroke))
 head(df_proc)
 ```
 
