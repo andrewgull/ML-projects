@@ -800,6 +800,7 @@ fit_xgb_kp <- train(stroke ~ .,
                    .min_child_weight = 1,
                    .subsample = 3
                  ),
+                 nthreads = 10,
                  verbose = FALSE,
                  verbosity = 0)
 
