@@ -690,10 +690,14 @@ fit_adb <- train(stroke ~ .,
                  metric = "Kappa", 
                  method = "AdaBoost.M1", 
                  trControl = fit_ctrl_kp10,
-                 tuneGrid = expand.grid(.maxdepth = seq(10, 20, 2), .mfinal = seq(150, 180, 10), .coeflearn = c("Freund")),
+                 tuneGrid = expand.grid(
+                   .maxdepth = seq(10, 20, 2), 
+                   .mfinal = seq(150, 180, 10), 
+                   .coeflearn = c("Freund")),
                  verbosity = 0,
                  verbose = FALSE)
 # coeflearn=Freund was chosen by automatic grid search, mfinal choice comes from there too
+
 # stop CLuster
 stopCluster(cl)
 
@@ -774,7 +778,7 @@ xgbTree has 7 parameters
 
 10-fold CV
 
-```{r train.xgb, eval=T, eval=T}
+```{r train.xgb, eval=F}
 set.seed(121)
 
 fit_xgb_kp <- train(stroke ~ ., 
@@ -800,7 +804,7 @@ fit_xgb_kp$bestTune
 
 ## Features importance
 
-```{r featimp.xgb, eval=T}
+```{r featimp.xgb, eval=F}
 imp_vars_xgb <- varImp(fit_xgb_kp)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -811,7 +815,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ### ROC curve
 
-```{r roc.xgb, eval=T}
+```{r roc.xgb, eval=F}
 # calculate ROC
 perf_pred_xgb <- get_roc(fit_xgb_kp, df_test)
 perf_xgb <- perf_pred_xgb[[1]]
@@ -830,7 +834,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ### TPR v FPR
 
-```{r tpr.xgb}
+```{r tpr.xgb, eval=F}
 # use pred_xgb object
 plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -850,7 +854,7 @@ title("xgbTree")
 
 ### Confusion matrix
 
-```{r cm.xgb}
+```{r cm.xgb, eval=F}
 pred_prob_xgb <- predict(fit_xgb_kp, newdata=df_test, type = "prob")
 
 # choose your cut-off
