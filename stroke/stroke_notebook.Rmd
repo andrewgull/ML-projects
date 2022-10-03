@@ -427,12 +427,6 @@ fit_ctrl_kp <- trainControl(## 5-fold CV
                            number = 5,
                            repeats = 10, 
                            allowParallel = T)
-
-fit_ctrl_kp10 <- trainControl(## 10-fold CV
-                           method = "repeatedcv",
-                           number = 10,
-                           repeats = 10, 
-                           allowParallel = T)
 ```
 
 ## Split data
@@ -502,7 +496,7 @@ fit_rf_roc <- train(stroke ~ .,
                  tuneGrid = expand.grid(.mtry = seq(2, 6, 0.5)),
                  verbosity = 0,
                  verbose = FALSE)
-#stopCluster(cl)
+stopCluster(cl)
 
 fit_rf_roc
 
@@ -679,7 +673,7 @@ cm_rf
 
 10-fold CV
 
-```{r train.adb, eval=T}
+```{r train.adb, eval=F}
 set.seed(122)
 
 #cl <- makePSOCKcluster(THREADS)
@@ -691,15 +685,15 @@ fit_adb <- train(stroke ~ .,
                  method = "AdaBoost.M1", 
                  trControl = fit_ctrl_kp10,
                  tuneGrid = expand.grid(
-                   .maxdepth = seq(5, 25, 1), 
-                   .mfinal = 150, 
+                   .maxdepth = seq(18, 25, 1), 
+                   .mfinal = seq(140, 200, 10) 
                    .coeflearn = c("Freund")),
                  verbosity = 0,
                  verbose = FALSE)
 # coeflearn=Freund was chosen by automatic grid search, mfinal choice comes from there too
 
 # stop CLuster
-stopCluster(cl)
+#stopCluster(cl)
 
 fit_adb
 ```
@@ -709,7 +703,7 @@ fit_adb
 
 ### ROC curve
 
-```{r roc.adb}
+```{r roc.adb, eval=F}
 # calculate ROC
 perf_pred_adb <- get_roc(fit_adb, df_test)
 perf_adb <- perf_pred_adb[[1]]
@@ -728,7 +722,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_adb))
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r tpr.adb}
+```{r tpr.adb, eval=F}
 # use pred_rf (pred_roc) object
 plot(performance(pred_adb, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -748,7 +742,7 @@ title("AdaBoost.M1")
 
 ### Confusion matrix
 
-```{r cm.adb}
+```{r cm.adb, eval=F}
 pred_prob_adb <- predict(fit_adb, newdata = df_test, type = "prob")
 
 # choose your cut-off
@@ -772,13 +766,24 @@ cm_adb
 
 xgbTree has 7 parameters
 
+## Params tuning
+
+```{r}
+fit_ctrl_kp10 <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           repeats = 100, 
+                           allowParallel = T)
+```
+
+
 ## Training and validation
 
 ### Kappa-optimized
 
 10-fold CV
 
-```{r train.xgb, eval=F}
+```{r train.xgb, eval=T}
 set.seed(121)
 
 fit_xgb_kp <- train(stroke ~ ., 
@@ -788,12 +793,12 @@ fit_xgb_kp <- train(stroke ~ .,
                  trControl = fit_ctrl_kp10,
                  tuneGrid = expand.grid(
                    .nrounds = 100,
-                   .max_depth = seq(3, 15, 1),
+                   .max_depth = seq(2, 10, 1),
                    .eta = 0.3,
-                   .gamma = 0.01,
+                   .gamma = c(0.005, 0.01, 0.015),
                    .colsample_bytree = 1,
                    .min_child_weight = 1,
-                   .subsample = 1
+                   .subsample = 3
                  ),
                  verbose = FALSE,
                  verbosity = 0)
@@ -804,7 +809,7 @@ fit_xgb_kp$bestTune
 
 ## Features importance
 
-```{r featimp.xgb, eval=F}
+```{r featimp.xgb, eval=T}
 imp_vars_xgb <- varImp(fit_xgb_kp)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -815,7 +820,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ### ROC curve
 
-```{r roc.xgb, eval=F}
+```{r roc.xgb, eval=T}
 # calculate ROC
 perf_pred_xgb <- get_roc(fit_xgb_kp, df_test)
 perf_xgb <- perf_pred_xgb[[1]]
@@ -834,7 +839,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ### TPR v FPR
 
-```{r tpr.xgb, eval=F}
+```{r tpr.xgb, eval=T}
 # use pred_xgb object
 plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -854,7 +859,7 @@ title("xgbTree")
 
 ### Confusion matrix
 
-```{r cm.xgb, eval=F}
+```{r cm.xgb, eval=T}
 pred_prob_xgb <- predict(fit_xgb_kp, newdata=df_test, type = "prob")
 
 # choose your cut-off
