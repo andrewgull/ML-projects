@@ -691,8 +691,8 @@ fit_adb <- train(stroke ~ .,
                  method = "AdaBoost.M1", 
                  trControl = fit_ctrl_kp10,
                  tuneGrid = expand.grid(
-                   .maxdepth = seq(10, 20, 2), 
-                   .mfinal = seq(150, 180, 10), 
+                   .maxdepth = seq(5, 25, 1), 
+                   .mfinal = 150, 
                    .coeflearn = c("Freund")),
                  verbosity = 0,
                  verbose = FALSE)
