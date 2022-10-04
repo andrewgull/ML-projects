@@ -412,11 +412,11 @@ ROC-optimization is better when data is imbalanced
 
 Kappa-optimization is also good
 
-```{r tune}
+```{r tune1}
 # for ROC
 fit_ctrl_roc <- trainControl(## 5-fold CV
                            method = "repeatedcv",
-                           number = 5,
+                           number = 10,
                            repeats = 10, 
                            allowParallel = T,
                            classProbs = T,
@@ -424,7 +424,7 @@ fit_ctrl_roc <- trainControl(## 5-fold CV
 # for kappa
 fit_ctrl_kp <- trainControl(## 5-fold CV
                            method = "repeatedcv",
-                           number = 5,
+                           number = 10,
                            repeats = 10, 
                            allowParallel = T)
 ```
@@ -450,7 +450,7 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 
 ## Training and validation
 
-```{r, eval=F}
+```{r, eval=T}
 # start a cluster
 library(doParallel)
 
@@ -464,7 +464,7 @@ registerDoParallel(cl)
 
 For imbalanced classes
 
-```{r train.rf, eval=F}
+```{r train.rf, eval=T}
 set.seed(123)
 
 fit_rf <- train(stroke ~ ., 
@@ -472,7 +472,7 @@ fit_rf <- train(stroke ~ .,
                  metric = "Kappa", 
                  method = "rf", 
                  trControl = fit_ctrl_kp,
-                 tuneGrid = expand.grid(.mtry = seq(2, 6, 0.5)), # I've tried all values greater than these
+                 tuneGrid = expand.grid(.mtry = seq(2, 19, 1)),
                  verbosity = 0,
                  verbose = FALSE)
 
@@ -482,7 +482,7 @@ fit_rf
 
 ### ROC-optimized
 
-```{r train.rf.roc, eval=F}
+```{r train.rf.roc, eval=T}
 #cl <- makePSOCKcluster(THREADS)
 #registerDoParallel(cl)
 
@@ -493,7 +493,7 @@ fit_rf_roc <- train(stroke ~ .,
                  metric = "ROC", 
                  method = "rf", 
                  trControl = fit_ctrl_roc,
-                 tuneGrid = expand.grid(.mtry = seq(2, 6, 0.5)),
+                 tuneGrid = expand.grid(.mtry = seq(2, 19, 1)),
                  verbosity = 0,
                  verbose = FALSE)
 stopCluster(cl)
@@ -506,7 +506,7 @@ fit_rf_roc
 
 ### Kappa-optimized model
 
-```{r featimp.rf, eval=F}
+```{r featimp.rf, eval=T}
 imp_vars_rf <- varImp(fit_rf)
 
 plot(imp_vars_rf, main = "Variable Importance with RF")
@@ -534,7 +534,7 @@ get_roc <- function(fit.obj, testing.df){
 
 #### ROC-curve for kappa-optimized model
 
-```{r roc.rf, eval=F}
+```{r roc.rf, eval=T}
 # calculate ROC
 perf_pred <- get_roc(fit_rf, df_test)
 perf_rf <- perf_pred[[1]]
@@ -552,7 +552,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 #### ROC-curve for ROC-optimized model
 
-```{r roc.rf.roc, eval=F}
+```{r roc.rf.roc, eval=T}
 # calculate ROC
 perf_pred_roc <- get_roc(fit_rf_roc, df_test)
 perf_rf_roc <- perf_pred_roc[[1]]
@@ -574,7 +574,7 @@ So, we can adjust TPR/FPR cutoff to predict all strokes
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r tpr.k, eval=F}
+```{r tpr.k, eval=T}
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -594,7 +594,7 @@ title("RF-k")
 
 Vertical line at cutoff = 0.02 designates maximum TPR and maximum FPR. Ideal cutoff should be to the left of this line
 
-```{r tpr.r, eval=F}
+```{r tpr.r, eval=T}
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf_roc, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -622,7 +622,7 @@ Using desired cut-off: we want to maximize TPR (Sensitivity, Recall)!
 
 According to the TPR/FPR plot (above) the optimal cutoff is
 
-```{r test.rf.k, eval=F}
+```{r test.rf.k, eval=T}
 # predict probabilities
 pred_prob_rf <- predict(fit_rf, newdata=df_test, type = "prob")
 
@@ -644,7 +644,7 @@ cm_rf
 
 #### ROC-optimized
 
-```{r test.rf.r, eval=F}
+```{r test.rf.r, eval=T}
 # predict probabilities
 pred_prob_rf_roc <- predict(fit_rf_roc, newdata = df_test, type = "prob")
 
@@ -783,7 +783,7 @@ fit_ctrl_kp10 <- trainControl(## 10-fold CV
 
 10-fold CV
 
-```{r train.xgb, eval=T, cache=T}
+```{r train.xgb, eval=F, cache=T}
 set.seed(121)
 
 fit_xgb_kp <- train(stroke ~ ., 
@@ -810,7 +810,7 @@ fit_xgb_kp$bestTune
 
 ## Features importance
 
-```{r featimp.xgb, eval=T}
+```{r featimp.xgb, eval=F}
 imp_vars_xgb <- varImp(fit_xgb_kp)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -821,7 +821,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ### ROC curve
 
-```{r roc.xgb, eval=T}
+```{r roc.xgb, eval=F}
 # calculate ROC
 perf_pred_xgb <- get_roc(fit_xgb_kp, df_test)
 perf_xgb <- perf_pred_xgb[[1]]
@@ -840,7 +840,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ### TPR v FPR
 
-```{r tpr.xgb, eval=T}
+```{r tpr.xgb, eval=F}
 # use pred_xgb object
 plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -860,7 +860,7 @@ title("xgbTree")
 
 ### Confusion matrix
 
-```{r cm.xgb, eval=T}
+```{r cm.xgb, eval=F}
 pred_prob_xgb <- predict(fit_xgb_kp, newdata=df_test, type = "prob")
 
 # choose your cut-off
