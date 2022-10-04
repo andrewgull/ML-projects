@@ -406,7 +406,7 @@ head(df_proc)
 
 # Modelling
 
-## Params tuning
+## Basic parameters
 
 ROC-optimization is better when data is imbalanced
 
@@ -464,7 +464,7 @@ registerDoParallel(cl)
 
 For imbalanced classes
 
-```{r train.rf, eval=T}
+```{r train.rf, eval=T, cache=TRUE}
 set.seed(123)
 
 fit_rf <- train(stroke ~ ., 
@@ -482,7 +482,7 @@ fit_rf
 
 ### ROC-optimized
 
-```{r train.rf.roc, eval=T}
+```{r train.rf.roc, eval=T, cache=TRUE}
 #cl <- makePSOCKcluster(THREADS)
 #registerDoParallel(cl)
 
@@ -496,7 +496,7 @@ fit_rf_roc <- train(stroke ~ .,
                  tuneGrid = expand.grid(.mtry = seq(2, 19, 1)),
                  verbosity = 0,
                  verbose = FALSE)
-stopCluster(cl)
+#stopCluster(cl)
 
 fit_rf_roc
 
@@ -669,11 +669,11 @@ cm_rf
 
 ## Training and validation
 
-### Kappa-optimized
+### ROC-optimized
 
 10-fold CV
 
-```{r train.adb, eval=F}
+```{r train.adb, eval=T}
 set.seed(122)
 
 #cl <- makePSOCKcluster(THREADS)
@@ -683,17 +683,14 @@ fit_adb <- train(stroke ~ .,
                  data = df_train_smote, 
                  metric = "Kappa", 
                  method = "AdaBoost.M1", 
-                 trControl = fit_ctrl_kp10,
-                 tuneGrid = expand.grid(
-                   .maxdepth = seq(18, 25, 1), 
-                   .mfinal = seq(140, 200, 10) 
-                   .coeflearn = c("Freund")),
+                 trControl = fit_ctrl_roc,
+                 tuneLength = 10,
                  verbosity = 0,
                  verbose = FALSE)
 # coeflearn=Freund was chosen by automatic grid search, mfinal choice comes from there too
 
 # stop CLuster
-#stopCluster(cl)
+stopCluster(cl)
 
 fit_adb
 ```
@@ -703,7 +700,7 @@ fit_adb
 
 ### ROC curve
 
-```{r roc.adb, eval=F}
+```{r roc.adb, eval=T}
 # calculate ROC
 perf_pred_adb <- get_roc(fit_adb, df_test)
 perf_adb <- perf_pred_adb[[1]]
@@ -722,7 +719,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_adb))
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r tpr.adb, eval=F}
+```{r tpr.adb, eval=T}
 # use pred_rf (pred_roc) object
 plot(performance(pred_adb, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -742,7 +739,7 @@ title("AdaBoost.M1")
 
 ### Confusion matrix
 
-```{r cm.adb, eval=F}
+```{r cm.adb, eval=T}
 pred_prob_adb <- predict(fit_adb, newdata = df_test, type = "prob")
 
 # choose your cut-off
