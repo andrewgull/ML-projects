@@ -1,0 +1,57 @@
+---
+title: "Hepatits C prediction"
+author: "A.G."
+format: html
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
+library(tidyverse)
+library(caret)
+library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
+library(ROCR)
+```
+
+
+# Read data set
+
+```{r}
+df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% select(-...1)
+
+df
+```
+
+> The target attribute for classification is Category (2): blood donors vs. Hepatitis C patients (including its progress ('just' Hepatitis C, Fibrosis, Cirrhosis).
+
+```{r}
+# make re-coded Category variable
+
+df$Diagnosis <- if_else(df$Category == "0=Blood Donor", "Donor", "Hepatitis")
+
+df$Diagnosis <- factor(df$Diagnosis, levels = c("Donor", "Hepatitis"))
+
+df <- df %>% relocate(Diagnosis, .before = Category)
+```
+
+
+# Description
+
+```{r}
+skimr::skim(df)
+```
+
+# EDA
+
+## Age v Category
+
+```{r}
+ggplot(df, aes(Diagnosis, Age)) +
+  geom_violin(aes(fill=Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill=Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1)
+```
+
+
+
