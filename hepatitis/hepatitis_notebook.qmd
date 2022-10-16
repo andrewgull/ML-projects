@@ -362,7 +362,7 @@ fit_xgb <- train(Diagnosis ~ .,
                  metric = "ROC", 
                  trControl = fit_ctrl,
                  tuneGrid = expand.grid(
-                   .nrounds = 50,
+                   .nrounds = 10,
                    .max_depth = seq(2, 10, 1),
                    .eta = 0.3,
                    .gamma = c(0.005, 0.01, 0.015),
@@ -384,16 +384,16 @@ fit_xgb$bestTune
 ```{r roc.xgb}
 # calculate ROC
 perf_pred <- get_roc(fit_xgb, df_test)
-perf_rf <- perf_pred[[1]]
-pred_rf <- perf_pred[[2]]
+perf_xgb <- perf_pred[[1]]
+pred_xgb <- perf_pred[[2]]
 
 # take AUC 
-auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
+auc_xgb <- round(unlist(slot(performance(pred_xgb, measure = "auc"), "y.values")), 3)
 
 # plot
-plot(perf_rf, main = "XGB ROC curve", col = "steelblue", lwd = 3)
+plot(perf_xgb, main = "XGB ROC curve", col = "steelblue", lwd = 3)
 abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
+legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ```
 
@@ -401,12 +401,12 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 ```{r tpr.xgb, eval=T}
 # use pred_rf (pred_roc) object
-plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
+plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
      ylab = "Rate", 
      xlab="Probability cutoff")
 
-plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
+plot(performance(pred_xgb, measure = "fpr", x.measure = "cutoff"), 
      add = T, col = "red")
 
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
