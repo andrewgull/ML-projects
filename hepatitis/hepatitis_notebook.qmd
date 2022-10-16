@@ -325,6 +325,30 @@ legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"),
 title("RF")
 ```
 
+### Confusion matrix
+
+With selected cutoff
+
+```{r}
+pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
+
+# choose your cut-off
+cutoff <- 0.17
+
+# turn probabilities into classes
+pred_class_rf <- ifelse(pred_prob_rf$Hepatitis > cutoff, "Hepatitis.yes", "Hepatitis.no")
+
+pred_class_rf <- as.factor(pred_class_rf)
+
+cm_rf <- confusionMatrix(data = pred_class_rf, 
+                reference = df_test$Diagnosis,
+                mode = "everything",
+                positive = "Hepatitis.yes")
+
+cm_rf
+```
+
+
 # Boosting
 
 
