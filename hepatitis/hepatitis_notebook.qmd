@@ -336,14 +336,14 @@ pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
 cutoff <- 0.17
 
 # turn probabilities into classes
-pred_class_rf <- ifelse(pred_prob_rf$Hepatitis > cutoff, "Hepatitis.yes", "Hepatitis.no")
+pred_class_rf <- ifelse(pred_prob_rf$Hepatitis > cutoff, "Hepatitis", "Donor")
 
 pred_class_rf <- as.factor(pred_class_rf)
 
 cm_rf <- confusionMatrix(data = pred_class_rf, 
                 reference = df_test$Diagnosis,
                 mode = "everything",
-                positive = "Hepatitis.yes")
+                positive = "Hepatitis")
 
 cm_rf
 ```
