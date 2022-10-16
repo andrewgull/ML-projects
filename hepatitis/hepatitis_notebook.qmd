@@ -308,6 +308,9 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 ### TPR v FPR
 
 ```{r tpr.rf, eval=T}
+# choose your cut-off
+cutoff <- 0.2
+
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -320,7 +323,7 @@ plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v = 0.17, lwd = 2, lty=6)
+abline(v = cutoff, lwd = 2, lty=6)
 
 title("RF")
 ```
@@ -331,9 +334,6 @@ With selected cutoff
 
 ```{r}
 pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
-
-# choose your cut-off
-cutoff <- 0.17
 
 # turn probabilities into classes
 pred_class_rf <- ifelse(pred_prob_rf$Hepatitis > cutoff, "Hepatitis", "Donor")
@@ -362,7 +362,7 @@ fit_xgb <- train(Diagnosis ~ .,
                  metric = "ROC", 
                  trControl = fit_ctrl,
                  tuneGrid = expand.grid(
-                   .nrounds = 10,
+                   .nrounds = 5,
                    .max_depth = seq(2, 10, 1),
                    .eta = 0.3,
                    .gamma = c(0.005, 0.01, 0.015),
