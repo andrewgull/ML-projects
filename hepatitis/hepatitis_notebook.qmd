@@ -260,7 +260,7 @@ fit_ctrl <- trainControl(## 5-fold CV
                            classProbs = T,
                            summaryFunction = twoClassSummary)
 
-fit_rf <- train(stroke ~ ., 
+fit_rf <- train(Diagnosis ~ ., 
                  data = df_train_smote, 
                  metric = "ROC", 
                  method = "rf", 
@@ -281,7 +281,7 @@ fit_rf
 ```{r roc.fun}
 get_roc <- function(fit.obj, testing.df){
   pred_prob <- predict.train(fit.obj, newdata = testing.df, type = "prob")
-  pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
+  pred_roc <- prediction(predictions = pred_prob$Hepatitis, labels = testing.df$Diagnosis)
   perf_roc <- performance(pred_roc, measure = "tpr", x.measure = "fpr")
   return(list(perf_roc, pred_roc))
 }
