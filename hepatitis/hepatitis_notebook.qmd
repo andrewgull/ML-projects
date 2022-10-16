@@ -320,7 +320,7 @@ plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-#abline(v = 0.02, lwd = 2, lty=6)
+abline(v = 0.17, lwd = 2, lty=6)
 
 title("RF")
 ```
