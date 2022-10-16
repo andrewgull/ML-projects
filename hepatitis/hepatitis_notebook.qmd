@@ -6,7 +6,7 @@ editor: visual
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(tidyverse)
 library(caret)
 library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
@@ -19,20 +19,14 @@ library(ROCR)
 ```{r}
 df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% select(-...1)
 
+# make re-coded Category variable
+df$Diagnosis <- if_else(df$Category == "0=Blood Donor", "Donor", "Hepatitis")
+df$Diagnosis <- factor(df$Diagnosis, levels = c("Donor", "Hepatitis"))
+df <- df %>% relocate(Diagnosis, .before = Category) %>% select(-Category)
 df
 ```
 
 > The target attribute for classification is Category (2): blood donors vs. Hepatitis C patients (including its progress ('just' Hepatitis C, Fibrosis, Cirrhosis).
-
-```{r}
-# make re-coded Category variable
-
-df$Diagnosis <- if_else(df$Category == "0=Blood Donor", "Donor", "Hepatitis")
-
-df$Diagnosis <- factor(df$Diagnosis, levels = c("Donor", "Hepatitis"))
-
-df <- df %>% relocate(Diagnosis, .before = Category)
-```
 
 
 # Description
@@ -43,15 +37,294 @@ skimr::skim(df)
 
 # EDA
 
-## Age v Category
+## Pairs plot
 
-```{r}
-ggplot(df, aes(Diagnosis, Age)) +
-  geom_violin(aes(fill=Diagnosis), alpha = 0.5) +
-  geom_jitter(alpha = 0.5, size = 0.6) +
-  geom_boxplot(aes(fill=Diagnosis), alpha = 0.2) +
+```{r pairs, fig.width=10, fig.height=10, warning=FALSE, message=FALSE, eval=FALSE}
+GGally::ggpairs(df, aes(color = Diagnosis, alpha = 0.05, dotsize = 0.01), 
+        upper = list(continuous = GGally::wrap("cor", size = 2.0)),
+        diag = list(continuous = "barDiag")) +
+  scale_color_brewer(palette = "Set1", direction = -1) +
   scale_fill_brewer(palette = "Set1", direction = -1)
 ```
 
+## Age v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, Age)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+## Age v ALB
+
+```{r}
+ggplot(df, aes(Diagnosis, ALB)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+## ALP v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, ALP)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+## ALT v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, ALT)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+## AST v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, AST)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+## BIL v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, BIL)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+
+## CHE v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, CHE)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+
+## CHOL v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, CHOL)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+
+## CREA v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, CREA)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+
+## GGT v Diagnosis
+
+```{r}
+ggplot(df, aes(Diagnosis, GGT)) +
+  geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  xlab("")
+```
+
+## Sex v Diagnosis
+
+```{r}
+sex_n <- df %>% group_by(Diagnosis, Sex) %>% summarise(N = n())
+
+ggplot(sex_n, aes(Diagnosis, N)) +
+  geom_col(aes(fill = Sex), position = "fill") +
+  scale_fill_brewer(palette = "Set2", direction = -1) +
+  xlab("") +
+  ylab("Proportion")
+```
+
+# Data processing
+
+## Imputation
+
+```{r, warning=FALSE, message=FALSE}
+library(mice)
+
+imp_mice <- mice(df)
+df_imp <- complete(imp_mice)
+
+skimr::skim(df_imp)
+```
+
+## Dummy vars
+
+```{r}
+to_dum <- df_imp %>% select(Sex)
+# make an obj
+dummies <- dummyVars(~ ., data = to_dum)
+# apply it
+df_dummy <- data.frame(predict(dummies, newdata = to_dum))
+
+head(df_dummy)
+```
+
+## Scaling
+
+```{r}
+df_scaled <- df_imp %>% 
+  select(-c(Sex, Diagnosis)) %>% 
+  scale() %>% 
+  data.frame()
+
+head(df_scaled)
+```
+
+
+## Join
+
+```{r}
+df_proc <- bind_cols(df_scaled, df_dummy)
+df_proc$Diagnosis <- df$Diagnosis
+head(df_proc) 
+```
+
+# Split data into training and testing
+
+```{r data.split}
+set.seed(1234)
+sample_set <- createDataPartition(y = df_proc$Diagnosis, p = .75, list = FALSE)
+df_train <- df_proc[sample_set,]
+df_test <- df_proc[-sample_set,]
+```
+
+
+## Target class equalization in training data set
+
+```{r smote}
+# DMwR::SMOTE for imbalanced data: over=225 and under=150 give me 1:1 ratio
+df_train_smote <- SMOTE(Diagnosis ~ ., data.frame(df_train), perc.over = 400, perc.under = 215)
+
+df_train_smote %>% group_by(Diagnosis) %>% summarise(N=n())
+```
+
+# Random Forest
+
+## Training
+
+```{r rf.train}
+library(doParallel)
+
+set.seed(120)
+
+THREADS <- 12
+
+cl <- makePSOCKcluster(THREADS)
+registerDoParallel(cl)
+
+
+fit_ctrl <- trainControl(## 5-fold CV
+                           method = "repeatedcv",
+                           number = 5,
+                           repeats = 10, 
+                           allowParallel = T,
+                           classProbs = T,
+                           summaryFunction = twoClassSummary)
+
+fit_rf <- train(stroke ~ ., 
+                 data = df_train_smote, 
+                 metric = "ROC", 
+                 method = "rf", 
+                 trControl = fit_ctrl,
+                 tuneGrid = expand.grid(.mtry = seq(2, 12, 0.5)),
+                 ntree = 10,
+                 nodesize = 1,
+                 verbosity = 0,
+                 verbose = FALSE)
+stopCluster(cl)
+
+fit_rf
+
+```
+
+## Testing
+
+```{r roc.fun}
+get_roc <- function(fit.obj, testing.df){
+  pred_prob <- predict.train(fit.obj, newdata = testing.df, type = "prob")
+  pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
+  perf_roc <- performance(pred_roc, measure = "tpr", x.measure = "fpr")
+  return(list(perf_roc, pred_roc))
+}
+```
+
+### ROC curve
+
+```{r roc.rf, eval=T}
+# calculate ROC
+perf_pred <- get_roc(fit_rf, df_test)
+perf_rf <- perf_pred[[1]]
+pred_rf <- perf_pred[[2]]
+
+# take AUC 
+auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
+
+# plot
+plot(perf_rf, main = "RF ROC curve", col = "steelblue", lwd = 3)
+abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
+legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
+
+```
+
+### TPR v FPR
+
+```{r tpr.rf, eval=T}
+# use pred_rf (pred_roc) object
+plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
+     col="steelblue", 
+     ylab = "Rate", 
+     xlab="Probability cutoff")
+
+plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
+     add = T, col = "red")
+
+legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
+       lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
+
+#abline(v = 0.02, lwd = 2, lty=6)
+
+title("RF")
+```
+
+# Boosting
 
 
