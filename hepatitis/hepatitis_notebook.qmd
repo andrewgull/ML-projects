@@ -28,7 +28,8 @@ library(ROCR)
 df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% select(-...1)
 
 # make re-coded Category variable
-df$Diagnosis <- if_else(df$Category == "0=Blood Donor", "Donor", "Hepatitis")
+# there is 0=Blood Donor and 0s=suspect Blood Donor
+df$Diagnosis <- if_else(str_detect(df$Category, "Donor"), "Donor", "Hepatitis")
 df$Diagnosis <- factor(df$Diagnosis, levels = c("Donor", "Hepatitis"))
 df <- df %>% relocate(Diagnosis, .before = Category) %>% select(-Category)
 head(df)
@@ -95,6 +96,7 @@ ggplot(df, aes(Diagnosis, ALT)) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
+  coord_trans(y = "sqrt") +
   xlab("")
 ```
 
@@ -233,7 +235,7 @@ df_test <- df_proc[-sample_set,]
 
 ```{r smote}
 # DMwR::SMOTE for imbalanced data: over=225 and under=150 give me 1:1 ratio
-df_train_smote <- SMOTE(Diagnosis ~ ., data.frame(df_train), perc.over = 400, perc.under = 215)
+df_train_smote <- SMOTE(Diagnosis ~ ., data.frame(df_train), perc.over = 500, perc.under = 190)
 
 df_train_smote %>% group_by(Diagnosis) %>% summarise(N=n())
 ```
