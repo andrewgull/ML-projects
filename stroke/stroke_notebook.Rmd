@@ -324,7 +324,7 @@ Since, modelling using all predictors and observations has given me very moderat
 
 Remove bmi > 60
 
-```{r}
+```{r, cache=F}
 df_trim <- df %>% filter(bmi <= 60 )
 
 skimr::skim(df_trim)
@@ -340,7 +340,7 @@ It uses `polr` - proportional odds model - for `smoking_status` and `pmm` - pred
 
 ### Run imputation
 
-```{r, eval = T, message=FALSE}
+```{r, eval = T, message=FALSE, cache=F}
 library(mice)
 
 imp_mice <- mice(df_trim)
@@ -387,7 +387,7 @@ Counts increased proportionally in all *Smoking* groups
 
 Scale numeric features (including imputed BMI)
 
-```{r scale}
+```{r scale, cache=F}
 # use caret::preProcess()
 # preProcValues <- preProcess(training, method = c("center", "scale"))
 
@@ -403,7 +403,7 @@ df_scaled <- df_imp %>%
 
 I've decided to omit smoking_status completely - it won't be *dummified*
 
-```{r dummy}
+```{r dummy, cache=F}
 # select vars
 to_dum <- df_imp %>% select(gender, work_type, Residence_type, smoking_status)
 # make an obj
