@@ -19,7 +19,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(tidyverse)
 library(caret)
 #library(GGally)
@@ -162,11 +162,13 @@ Let's look at this weird points
 #### Age vs BMI vs Glucose
 
 ```{r}
+facet_names <- c("no" = "no stroke", "yes" = "stroke")
+
 ggplot(df, aes(age, bmi)) +
-  geom_point(aes(color = stroke), alpha = 0.8, size = 0.5) +
+  geom_point(color = "steelblue", alpha = 0.8, size = 0.5) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
-  facet_grid(rows = vars(stroke)) +
-  guides(color = "none")
+  facet_grid(rows = vars(stroke), labeller = as_labeller(facet_names)) +
+  guides()
 ```
 
 Patients with BMI over 75 are also very young. Suspicious.
@@ -177,7 +179,7 @@ Patients with BMI over 75 are also very young. Suspicious.
 ggplot(df, aes(age, avg_glucose_level)) +
   geom_point(aes(color = smoking_status), alpha = 0.6, size = 1) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
-  facet_grid(rows = vars(stroke)) +
+  facet_grid(rows = vars(stroke), labeller = as_labeller(facet_names)) +
   guides()
 ```
 
@@ -198,11 +200,12 @@ Kids are mainly non-smokers of course. Note the same two outliers of age below 2
 
 #### Glucose vs BMI
 
+
 ```{r}
 ggplot(df, aes(avg_glucose_level, bmi)) +
   geom_point(aes(color = age), alpha = 0.6, size = 1) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
-  facet_grid(rows = vars(stroke)) +
+  facet_grid(rows = vars(stroke), labeller = as_labeller(facet_names)) +
   guides()
 ```
 
@@ -295,17 +298,31 @@ ggplot(smoking, aes(stroke, N)) +
   ylab("proportion")
 ```
 
+#### Kids and Smoking
+
+A lot of NAs in `smoking_status` comes from group 'Children' (see `work_type`). I can replace them with 'never smoked'.
+
+```{r}
+df %>% filter(work_type == "children") %>% 
+  group_by(smoking_status) %>% 
+  summarise(N = n(), 
+            avg.age = mean(age), 
+            max.age = max(age), 
+            min.age = min(age))
+```
+
+
 ### Conclusions
 
 There are several suspicious outliers (like in BMI and glucose). I can safely remove BMI > 75, maybe even BMI > 60 (Remember that  BMI > 40 is the highest class of obesity).
 
-What is less safe - it's removing non-adults (younger than 20 y.o.). On one hand they provide valid information (age is very important predictor), on the other hand their stroke cases are really sus and a lot of predictors do not have sense (or are obvious NAs) for non-adults (like smoking, marriage status, employment type, residence type etc.); model-based imputation of smoking_status in children doesn't have sense as well, I should rather replace with "never smoked".
+What is less safe - it's removing non-adults (younger than 20 y.o.). On one hand they provide valid information (age is very important predictor), on the other hand their stroke cases are really sus and a lot of predictors do not have sense (or are obvious NAs) for non-adults (like smoking, marriage status, employment type, residence type etc.); model-based imputation of `smoking_status` in children doesn't have sense as well, I should rather replace with "never smoked".
 
 Since, modelling using all predictors and observations has given me very moderate results (TPR = 1 comes with very high FPR and very low probability cutoff close to 0), I will try various trimming of the data.
 
 ## Trimming
 
-Leave 'no kinds' version
+Remove bmi > 60
 
 ```{r}
 df_trim <- df %>% filter(bmi <= 60 )
@@ -410,23 +427,15 @@ head(df_proc)
 
 ROC-optimization is better when data is imbalanced
 
-Kappa-optimization is also good
-
 ```{r tune1}
 # for ROC
 fit_ctrl_roc <- trainControl(## 5-fold CV
                            method = "repeatedcv",
-                           number = 10,
+                           number = 5,
                            repeats = 10, 
                            allowParallel = T,
                            classProbs = T,
                            summaryFunction = twoClassSummary)
-# for kappa
-fit_ctrl_kp <- trainControl(## 5-fold CV
-                           method = "repeatedcv",
-                           number = 10,
-                           repeats = 10, 
-                           allowParallel = T)
 ```
 
 ## Split data
@@ -450,72 +459,39 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 
 ## Training and validation
 
-```{r, eval=T}
-# start a cluster
+```{r train.rf}
+set.seed(123)
+
 library(doParallel)
 
 cl <- makePSOCKcluster(THREADS)
 registerDoParallel(cl)
 
-```
-
-
-### Kappa-optimized
-
-For imbalanced classes
-
-```{r train.rf, eval=T, cache=TRUE}
-set.seed(123)
-
 fit_rf <- train(stroke ~ ., 
-                 data = df_train_smote, 
-                 metric = "Kappa", 
-                 method = "rf", 
-                 trControl = fit_ctrl_kp,
-                 tuneGrid = expand.grid(.mtry = seq(2, 19, 1)),
-                 verbosity = 0,
-                 verbose = FALSE)
-
-fit_rf
-
-```
-
-### ROC-optimized
-
-```{r train.rf.roc, eval=T, cache=TRUE}
-#cl <- makePSOCKcluster(THREADS)
-#registerDoParallel(cl)
-
-set.seed(120)
-
-fit_rf_roc <- train(stroke ~ ., 
                  data = df_train_smote, 
                  metric = "ROC", 
                  method = "rf", 
                  trControl = fit_ctrl_roc,
                  tuneGrid = expand.grid(.mtry = seq(2, 19, 1)),
                  verbosity = 0,
+                 ntree = 10,
+                 nodesize = 1,
                  verbose = FALSE)
-#stopCluster(cl)
 
-fit_rf_roc
+fit_rf
 
 ```
 
+
 ## Features importance
 
-### Kappa-optimized model
-
-```{r featimp.rf, eval=T}
+```{r featimp.rf}
 imp_vars_rf <- varImp(fit_rf)
 
 plot(imp_vars_rf, main = "Variable Importance with RF")
 
 ```
 
-### ROC-optimized model
-
-it's the same
 
 ## Testing
 
@@ -532,9 +508,10 @@ get_roc <- function(fit.obj, testing.df){
 }
 ```
 
-#### ROC-curve for kappa-optimized model
 
-```{r roc.rf, eval=T}
+### ROC-curve for ROC-optimized model
+
+```{r roc.rf}
 # calculate ROC
 perf_pred <- get_roc(fit_rf, df_test)
 perf_rf <- perf_pred[[1]]
@@ -544,59 +521,21 @@ pred_rf <- perf_pred[[2]]
 auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
 
 # plot
-plot(perf_rf, main = "RF-k ROC curve", col = "steelblue", lwd = 3)
+plot(perf_rf, main = "RF ROC curve", col = "steelblue", lwd = 3)
 abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
 legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 ```
 
-#### ROC-curve for ROC-optimized model
-
-```{r roc.rf.roc, eval=T}
-# calculate ROC
-perf_pred_roc <- get_roc(fit_rf_roc, df_test)
-perf_rf_roc <- perf_pred_roc[[1]]
-pred_rf_roc <- perf_pred_roc[[2]]
-
-# take AUC 
-auc_rf_roc <- round(unlist(slot(performance(pred_rf_roc, measure = "auc"), "y.values")), 3)
-
-# plot
-plot(perf_rf_roc, main = "RF-r ROC curve", col = "steelblue", lwd = 3)
-abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf_roc))
-
-```
-
-So, we can adjust TPR/FPR cutoff to predict all strokes
+So, we can adjust TPR/FPR cutoff to predict *all* stroke cases.
 
 ### TPR, FPR vs Probability cutoff
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r tpr.k, eval=T}
+```{r tpr.r}
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
-     col="steelblue", 
-     ylab = "Rate", 
-     xlab="Probability cutoff")
-
-plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
-     add = T, col = "red")
-
-legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
-
-#abline(v = 0.02, lwd = 2, lty=6)
-
-title("RF-k")
-```
-
-Vertical line at cutoff = 0.02 designates maximum TPR and maximum FPR. Ideal cutoff should be to the left of this line
-
-```{r tpr.r, eval=T}
-# use pred_rf (pred_roc) object
-plot(performance(pred_rf_roc, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
      ylab = "Rate", 
      xlab = "Probability cutoff")
@@ -609,25 +548,22 @@ legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"),
 
 #abline(v = 0.02, lwd = 2, lty=6)
 
-title("RF-r")
+title("RF")
 ```
 
-Vertical line at 0.02
 
 ### Confusion matrix
 
-#### Kappa-optimized
-
 Using desired cut-off: we want to maximize TPR (Sensitivity, Recall)!
 
-According to the TPR/FPR plot (above) the optimal cutoff is
+According to the TPR/FPR plot (above) the optimal cutoff is.
 
-```{r test.rf.k, eval=T}
+```{r test.rf}
 # predict probabilities
-pred_prob_rf <- predict(fit_rf, newdata=df_test, type = "prob")
+pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.01
+cutoff = 0.1
 
 # turn probabilities into classes
 pred_class_rf <- ifelse(pred_prob_rf$yes > cutoff, "yes", "no")
@@ -642,38 +578,12 @@ cm_rf <- confusionMatrix(data = pred_class_rf,
 cm_rf
 ```
 
-#### ROC-optimized
-
-```{r test.rf.r, eval=T}
-# predict probabilities
-pred_prob_rf_roc <- predict(fit_rf_roc, newdata = df_test, type = "prob")
-
-# choose your cut-off
-cutoff = 0.01
-
-# turn probabilities into classes
-pred_class_rf_roc <- ifelse(pred_prob_rf_roc$yes > cutoff, "yes", "no")
-
-pred_class_rf_roc <- as.factor(pred_class_rf_roc)
-
-cm_rf <- confusionMatrix(data = pred_class_rf_roc, 
-                reference = df_test$stroke,
-                mode = "everything",
-                positive = "yes")
-
-cm_rf
-```
-
 
 # AdaBoost
 
 ## Training and validation
 
-### ROC-optimized
-
-10-fold CV
-
-```{r train.adb, eval=T}
+```{r train.adb}
 set.seed(122)
 
 #cl <- makePSOCKcluster(THREADS)
@@ -681,7 +591,7 @@ set.seed(122)
 
 fit_adb <- train(stroke ~ ., 
                  data = df_train_smote, 
-                 metric = "Kappa", 
+                 metric = "ROC", 
                  method = "AdaBoost.M1", 
                  trControl = fit_ctrl_roc,
                  tuneLength = 10,
@@ -700,7 +610,7 @@ fit_adb
 
 ### ROC curve
 
-```{r roc.adb, eval=T}
+```{r roc.adb}
 # calculate ROC
 perf_pred_adb <- get_roc(fit_adb, df_test)
 perf_adb <- perf_pred_adb[[1]]
@@ -719,7 +629,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_adb))
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r tpr.adb, eval=T}
+```{r tpr.adb}
 # use pred_rf (pred_roc) object
 plot(performance(pred_adb, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -739,11 +649,11 @@ title("AdaBoost.M1")
 
 ### Confusion matrix
 
-```{r cm.adb, eval=T}
+```{r cm.adb}
 pred_prob_adb <- predict(fit_adb, newdata = df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.12
+cutoff = 0.11
 
 # turn probabilities into classes
 pred_class_adb <- ifelse(pred_prob_adb$yes > cutoff, "yes", "no")
@@ -763,52 +673,29 @@ cm_adb
 
 xgbTree has 7 parameters
 
-## Params tuning
-
-```{r}
-fit_ctrl_kp10 <- trainControl(## 10-fold CV
-                           method = "repeatedcv",
-                           number = 10,
-                           repeats = 50, 
-                           allowParallel = T)
-```
-
-
 ## Training and validation
-
-### Kappa-optimized
-
-10-fold CV
 
 ```{r train.xgb, eval=F, cache=T}
 set.seed(121)
 
-fit_xgb_kp <- train(stroke ~ ., 
+fit_xgb <- train(stroke ~ ., 
                  data = df_train_smote, 
                  method = "xgbTree",
-                 metric = "Kappa", 
-                 trControl = fit_ctrl_kp10,
-                 tuneGrid = expand.grid(
-                   .nrounds = 50,
-                   .max_depth = seq(2, 10, 1),
-                   .eta = 0.3,
-                   .gamma = c(0.005, 0.01, 0.015),
-                   .colsample_bytree = 1,
-                   .min_child_weight = 1,
-                   .subsample = 3
-                 ),
-                 nthreads = 10,
+                 metric = "ROC", 
+                 trControl = fit_ctrl_roc,
+                 tuneLength = 4,
+                 nthreads = 16,
                  verbose = FALSE,
                  verbosity = 0)
 
-fit_xgb_kp$bestTune
+fit_xgb$bestTune
 ```
 
 
 ## Features importance
 
 ```{r featimp.xgb, eval=F}
-imp_vars_xgb <- varImp(fit_xgb_kp)
+imp_vars_xgb <- varImp(fit_xgb)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
 ```
@@ -820,7 +707,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ```{r roc.xgb, eval=F}
 # calculate ROC
-perf_pred_xgb <- get_roc(fit_xgb_kp, df_test)
+perf_pred_xgb <- get_roc(fit_xgb, df_test)
 perf_xgb <- perf_pred_xgb[[1]]
 pred_xgb <- perf_pred_xgb[[2]]
 
@@ -858,7 +745,7 @@ title("xgbTree")
 ### Confusion matrix
 
 ```{r cm.xgb, eval=F}
-pred_prob_xgb <- predict(fit_xgb_kp, newdata=df_test, type = "prob")
+pred_prob_xgb <- predict(fit_xgb, newdata=df_test, type = "prob")
 
 # choose your cut-off
 cutoff = 0.12
