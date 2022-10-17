@@ -1,7 +1,16 @@
 ---
 title: "Hepatits C prediction"
 author: "A.G."
-format: html
+date-modified: "last update: `r format(Sys.Date(), format = '%d %B %Y')`"
+format: 
+  html:
+    toc: true
+    toc-depth: 2
+    toc-title: Contents
+    toc-location: left
+    df-print: paged
+    standalone: true
+    code-fold: true
 editor: visual
 ---
 
@@ -13,7 +22,6 @@ library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar
 library(ROCR)
 ```
 
-
 # Read data set
 
 ```{r}
@@ -23,11 +31,10 @@ df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% sele
 df$Diagnosis <- if_else(df$Category == "0=Blood Donor", "Donor", "Hepatitis")
 df$Diagnosis <- factor(df$Diagnosis, levels = c("Donor", "Hepatitis"))
 df <- df %>% relocate(Diagnosis, .before = Category) %>% select(-Category)
-df
+head(df)
 ```
 
 > The target attribute for classification is Category (2): blood donors vs. Hepatitis C patients (including its progress ('just' Hepatitis C, Fibrosis, Cirrhosis).
-
 
 # Description
 
@@ -113,7 +120,6 @@ ggplot(df, aes(Diagnosis, BIL)) +
   xlab("")
 ```
 
-
 ## CHE v Diagnosis
 
 ```{r}
@@ -124,7 +130,6 @@ ggplot(df, aes(Diagnosis, CHE)) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
   xlab("")
 ```
-
 
 ## CHOL v Diagnosis
 
@@ -137,7 +142,6 @@ ggplot(df, aes(Diagnosis, CHOL)) +
   xlab("")
 ```
 
-
 ## CREA v Diagnosis
 
 ```{r}
@@ -148,7 +152,6 @@ ggplot(df, aes(Diagnosis, CREA)) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
   xlab("")
 ```
-
 
 ## GGT v Diagnosis
 
@@ -209,7 +212,6 @@ df_scaled <- df_imp %>%
 head(df_scaled)
 ```
 
-
 ## Join
 
 ```{r}
@@ -226,7 +228,6 @@ sample_set <- createDataPartition(y = df_proc$Diagnosis, p = .75, list = FALSE)
 df_train <- df_proc[sample_set,]
 df_test <- df_proc[-sample_set,]
 ```
-
 
 ## Target class equalization in training data set
 
@@ -309,7 +310,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 ```{r tpr.rf, eval=T}
 # choose your cut-off
-cutoff <- 0.2
+cutoff <- 0.10
 
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
@@ -348,12 +349,11 @@ cm_rf <- confusionMatrix(data = pred_class_rf,
 cm_rf
 ```
 
-
 # Boosting
 
 ## Train
 
-```{r xgb.train}
+```{r xgb.train, eval=T}
 set.seed(121)
 # basic grid search
 fit_xgb <- train(Diagnosis ~ ., 
@@ -361,6 +361,7 @@ fit_xgb <- train(Diagnosis ~ .,
                  method = "xgbTree",
                  metric = "ROC", 
                  trControl = fit_ctrl,
+                 tuneLength = 5,
                  nthreads = 12,
                  verbose = FALSE,
                  verbosity = 0)
@@ -372,7 +373,7 @@ fit_xgb$bestTune
 
 ### ROC
 
-```{r roc.xgb}
+```{r roc.xgb, eval=T}
 # calculate ROC
 perf_pred <- get_roc(fit_xgb, df_test)
 perf_xgb <- perf_pred[[1]]
@@ -391,6 +392,8 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 ### TPR v FPR
 
 ```{r tpr.xgb, eval=T}
+cutoff <- 0.12
+
 # use pred_rf (pred_roc) object
 plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -403,7 +406,25 @@ plot(performance(pred_xgb, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v = 0.17, lwd = 2, lty=6)
+abline(v = cutoff, lwd = 2, lty=6)
 
 title("XGB")
+```
+
+### Confusion matrix with selected cutoff
+
+```{r}
+pred_prob_xgb <- predict(fit_xgb, newdata = df_test, type = "prob")
+
+# turn probabilities into classes
+pred_class_xgb <- ifelse(pred_prob_xgb$Hepatitis > cutoff, "Hepatitis", "Donor")
+
+pred_class_xgb <- as.factor(pred_class_xgb)
+
+cm_xgb <- confusionMatrix(data = pred_class_xgb, 
+                reference = df_test$Diagnosis,
+                mode = "everything",
+                positive = "Hepatitis")
+
+cm_xgb
 ```
