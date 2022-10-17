@@ -540,7 +540,7 @@ plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
      ylab = "Rate", 
      xlab = "Probability cutoff")
 
-plot(performance(pred_rf_roc, measure = "fpr", x.measure = "cutoff"), 
+plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
      add = T, col = "red")
 
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
