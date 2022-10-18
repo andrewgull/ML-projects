@@ -462,10 +462,10 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ```{r train.rf}
 set.seed(122)
 
-library(doParallel)
+#library(doParallel)
 
-cl <- makePSOCKcluster(THREADS)
-registerDoParallel(cl)
+#cl <- makePSOCKcluster(THREADS)
+#registerDoParallel(cl)
 
 fit_rf <- train(stroke ~ ., 
                  data = df_train_smote, 
@@ -478,7 +478,7 @@ fit_rf <- train(stroke ~ .,
                  nodesize = 1,
                  verbose = FALSE)
 
-stopCluster(cl)
+#stopCluster(cl)
 
 fit_rf
 
@@ -581,103 +581,13 @@ cm_rf
 ```
 
 
-# AdaBoost
-
-## Training and validation
-
-```{r train.adb, eval=T}
-set.seed(122)
-
-#cl <- makePSOCKcluster(THREADS)
-#registerDoParallel(cl)
-
-fit_adb <- train(stroke ~ ., 
-                 data = df_train_smote, 
-                 metric = "ROC", 
-                 method = "AdaBoost.M1", 
-                 trControl = fit_ctrl_roc,
-                 tuneLength = 10,
-                 verbosity = 0,
-                 verbose = FALSE)
-# coeflearn=Freund was chosen by automatic grid search, mfinal choice comes from there too
-
-# stop CLuster
-stopCluster(cl)
-
-fit_adb
-```
-
-
-## Testing
-
-### ROC curve
-
-```{r roc.adb, eval=F}
-# calculate ROC
-perf_pred_adb <- get_roc(fit_adb, df_test)
-perf_adb <- perf_pred_adb[[1]]
-pred_adb <- perf_pred_adb[[2]]
-
-# take AUC 
-auc_adb <- round(unlist(slot(performance(pred_adb, measure = "auc"), "y.values")), 3)
-
-# plot
-plot(perf_adb, main = "AdaBoost ROC curve", col = "steelblue", lwd = 3)
-abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_adb))
-```
-
-### TPR, FPR vs Probability cutoff
-
-At which probability cut-off, you'll get TPR = 1.0?
-
-```{r tpr.adb, eval=F}
-# use pred_rf (pred_roc) object
-plot(performance(pred_adb, measure = "tpr", x.measure = "cutoff"),
-     col="steelblue", 
-     ylab = "Rate", 
-     xlab="Probability cutoff")
-
-plot(performance(pred_adb, measure = "fpr", x.measure = "cutoff"), 
-     add = T, col = "red")
-
-legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
-
-#abline(v = 0.1, lwd = 2, lty=6)
-
-title("AdaBoost.M1")
-```
-
-### Confusion matrix
-
-```{r cm.adb, eval=F}
-pred_prob_adb <- predict(fit_adb, newdata = df_test, type = "prob")
-
-# choose your cut-off
-cutoff = 0.11
-
-# turn probabilities into classes
-pred_class_adb <- ifelse(pred_prob_adb$yes > cutoff, "yes", "no")
-
-pred_class_adb <- as.factor(pred_class_adb)
-
-cm_adb <- confusionMatrix(data = pred_class_adb, 
-                reference = df_test$stroke,
-                mode = "everything",
-                positive = "yes")
-
-cm_adb
-```
-
-
 # Extreme Gradient Boosting: xgbTree
 
 xgbTree has 7 parameters
 
 ## Training and validation
 
-```{r train.xgb, eval=F, cache=T}
+```{r train.xgb, eval=T}
 set.seed(121)
 
 fit_xgb <- train(stroke ~ ., 
@@ -696,7 +606,7 @@ fit_xgb$bestTune
 
 ## Features importance
 
-```{r featimp.xgb, eval=F}
+```{r featimp.xgb, eval=T}
 imp_vars_xgb <- varImp(fit_xgb)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -707,7 +617,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ### ROC curve
 
-```{r roc.xgb, eval=F}
+```{r roc.xgb, eval=T}
 # calculate ROC
 perf_pred_xgb <- get_roc(fit_xgb, df_test)
 perf_xgb <- perf_pred_xgb[[1]]
@@ -726,7 +636,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ### TPR v FPR
 
-```{r tpr.xgb, eval=F}
+```{r tpr.xgb, eval=T}
 # use pred_xgb object
 plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -746,7 +656,7 @@ title("xgbTree")
 
 ### Confusion matrix
 
-```{r cm.xgb, eval=F}
+```{r cm.xgb, eval=T}
 pred_prob_xgb <- predict(fit_xgb, newdata=df_test, type = "prob")
 
 # choose your cut-off
