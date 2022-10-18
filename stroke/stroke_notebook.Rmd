@@ -460,7 +460,7 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ## Training and validation
 
 ```{r train.rf}
-set.seed(123)
+set.seed(122)
 
 library(doParallel)
 
@@ -477,6 +477,8 @@ fit_rf <- train(stroke ~ .,
                  ntree = 10,
                  nodesize = 1,
                  verbose = FALSE)
+
+stopCluster(cl)
 
 fit_rf
 
@@ -521,7 +523,7 @@ pred_rf <- perf_pred[[2]]
 auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
 
 # plot
-plot(perf_rf, main = "RF ROC curve", col = "steelblue", lwd = 3)
+plot(perf_rf, main = "Random Fores ROC curve", col = "steelblue", lwd = 3)
 abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
 legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
@@ -543,7 +545,7 @@ plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
 plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
      add = T, col = "red")
 
-legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
+legend(x = 0.65,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
 #abline(v = 0.02, lwd = 2, lty=6)
@@ -563,7 +565,7 @@ According to the TPR/FPR plot (above) the optimal cutoff is.
 pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.1
+cutoff = 0.11
 
 # turn probabilities into classes
 pred_class_rf <- ifelse(pred_prob_rf$yes > cutoff, "yes", "no")
@@ -583,7 +585,7 @@ cm_rf
 
 ## Training and validation
 
-```{r train.adb}
+```{r train.adb, eval=T}
 set.seed(122)
 
 #cl <- makePSOCKcluster(THREADS)
@@ -610,7 +612,7 @@ fit_adb
 
 ### ROC curve
 
-```{r roc.adb}
+```{r roc.adb, eval=F}
 # calculate ROC
 perf_pred_adb <- get_roc(fit_adb, df_test)
 perf_adb <- perf_pred_adb[[1]]
@@ -629,7 +631,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_adb))
 
 At which probability cut-off, you'll get TPR = 1.0?
 
-```{r tpr.adb}
+```{r tpr.adb, eval=F}
 # use pred_rf (pred_roc) object
 plot(performance(pred_adb, measure = "tpr", x.measure = "cutoff"),
      col="steelblue", 
@@ -649,7 +651,7 @@ title("AdaBoost.M1")
 
 ### Confusion matrix
 
-```{r cm.adb}
+```{r cm.adb, eval=F}
 pred_prob_adb <- predict(fit_adb, newdata = df_test, type = "prob")
 
 # choose your cut-off
