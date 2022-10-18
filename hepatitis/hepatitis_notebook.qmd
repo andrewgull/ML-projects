@@ -16,11 +16,20 @@ editor: visual
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+library(skimr)
 library(tidyverse)
 library(caret)
 library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
 library(ROCR)
 ```
+
+# Intro
+
+The aim is to predict development of hepatitis' stages.
+
+> The target attribute for classification is Category (2): blood donors vs. Hepatitis C patients (including its progress ('just' Hepatitis C, Fibrosis, Cirrhosis).
+
+I'll join *Cirrhosis*, *Fibrosis* and *Hepatitis C* into one category **Hepatitis**, the other one will be called **Donor**
 
 # Read data set
 
@@ -35,22 +44,34 @@ df <- df %>% relocate(Diagnosis, .before = Category) %>% select(-Category)
 head(df)
 ```
 
-> The target attribute for classification is Category (2): blood donors vs. Hepatitis C patients (including its progress ('just' Hepatitis C, Fibrosis, Cirrhosis).
-
 # Description
 
+## Factor variables
+
 ```{r}
-skimr::skim(df)
+skim_desc <- skim(df)
+
+skim_desc %>%
+  yank("factor")
 ```
+
+## Numeric variables
+
+```{r}
+skim_desc %>%
+  yank("numeric")
+```
+
 
 # EDA
 
 ## Pairs plot
 
-```{r pairs, fig.width=10, fig.height=10, warning=FALSE, message=FALSE, eval=FALSE}
-GGally::ggpairs(df, aes(color = Diagnosis, alpha = 0.05, dotsize = 0.01), 
+```{r pairs, fig.width=14, fig.height=10, warning=FALSE, message=FALSE}
+GGally::ggpairs(df, aes(color = Diagnosis), 
         upper = list(continuous = GGally::wrap("cor", size = 2.0)),
-        diag = list(continuous = "barDiag")) +
+        diag = list(continuous = "barDiag"),
+        lower = list(continuous = GGally::wrap("points", alpha = 0.3, size=0.8))) +
   scale_color_brewer(palette = "Set1", direction = -1) +
   scale_fill_brewer(palette = "Set1", direction = -1)
 ```
@@ -108,6 +129,7 @@ ggplot(df, aes(Diagnosis, AST)) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
+  coord_trans(y = "sqrt") +
   xlab("")
 ```
 
@@ -119,6 +141,7 @@ ggplot(df, aes(Diagnosis, BIL)) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
+  coord_trans(y = "sqrt") +
   xlab("")
 ```
 
@@ -149,9 +172,10 @@ ggplot(df, aes(Diagnosis, CHOL)) +
 ```{r}
 ggplot(df, aes(Diagnosis, CREA)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
-  geom_jitter(alpha = 0.5, size = 0.6) +
+  geom_jitter(alpha = 0.2, size = 0.3) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
+  coord_trans(y = "sqrt") +
   xlab("")
 ```
 
@@ -163,6 +187,7 @@ ggplot(df, aes(Diagnosis, GGT)) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
+  coord_trans(y = "sqrt") +
   xlab("")
 ```
 
@@ -188,7 +213,6 @@ library(mice)
 imp_mice <- mice(df)
 df_imp <- complete(imp_mice)
 
-skimr::skim(df_imp)
 ```
 
 ## Dummy vars
@@ -214,7 +238,7 @@ df_scaled <- df_imp %>%
 head(df_scaled)
 ```
 
-## Join
+## Join dummies (categorical) and scaled numerical variables
 
 ```{r}
 df_proc <- bind_cols(df_scaled, df_dummy)
@@ -249,10 +273,10 @@ library(doParallel)
 
 set.seed(120)
 
-THREADS <- 12
+THREADS <- 8
 
-cl <- makePSOCKcluster(THREADS)
-registerDoParallel(cl)
+#cl <- makePSOCKcluster(THREADS)
+#registerDoParallel(cl)
 
 
 fit_ctrl <- trainControl(## 5-fold CV
@@ -273,13 +297,15 @@ fit_rf <- train(Diagnosis ~ .,
                  nodesize = 1,
                  verbosity = 0,
                  verbose = FALSE)
-stopCluster(cl)
+#stopCluster(cl)
 
 fit_rf
 
 ```
 
 ## Testing
+
+Here's a function to summarize a model's performance, it is used below.
 
 ```{r roc.fun}
 get_roc <- function(fit.obj, testing.df){
@@ -292,7 +318,9 @@ get_roc <- function(fit.obj, testing.df){
 
 ### ROC curve
 
-```{r roc.rf, eval=T}
+RF's performance on the testing data set 
+
+```{r roc.rf}
 # calculate ROC
 perf_pred <- get_roc(fit_rf, df_test)
 perf_rf <- perf_pred[[1]]
@@ -308,11 +336,13 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 ```
 
+AUC is pretty close to 1.0, True Positive Rate close to 1.0 while False Positive Rate is low
+
 ### TPR v FPR
 
-```{r tpr.rf, eval=T}
+```{r tpr.rf}
 # choose your cut-off
-cutoff <- 0.10
+cutoff <- 0.08
 
 # use pred_rf (pred_roc) object
 plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
@@ -326,16 +356,20 @@ plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"),
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
        lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v = cutoff, lwd = 2, lty=6)
+#abline(v = cutoff, lwd = 2, lty=6)
 
 title("RF")
 ```
+
+Unfortunately TPR falls quickly even at low probability cutoff, which means it's hard to 'catch' all cases with hepatitis without 'catching' any false positive predictions.
+
+Let's have a look at the confusion matrix.
 
 ### Confusion matrix
 
 With selected cutoff
 
-```{r}
+```{r cm.rf}
 pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
 
 # turn probabilities into classes
@@ -350,6 +384,14 @@ cm_rf <- confusionMatrix(data = pred_class_rf,
 
 cm_rf
 ```
+
+We see. that almost all hepatitis cases have been predicted but we still have a lot of false positives which makes PPV quite low ~0.5
+
+In other words, if our model predicts a patient to have hepatitis, there is ~50% chance that the patient doesn't have it.
+
+Also, the model should be able to capture **all** cases with the disease - that's what is required in clinical practice, i.e Sensitivity/Recall should be 1.0
+
+To overcome these two problems, a better algorithm should be used or the current one should be tuned better.
 
 # Boosting
 
@@ -415,7 +457,7 @@ title("XGB")
 
 ### Confusion matrix with selected cutoff
 
-```{r}
+```{r cm.xgb, eval=T}
 pred_prob_xgb <- predict(fit_xgb, newdata = df_test, type = "prob")
 
 # turn probabilities into classes

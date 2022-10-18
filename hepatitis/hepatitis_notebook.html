@@ -107,8 +107,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <h2 id="toc-title">Contents</h2>
    
   <ul>
-  <li><a href="#read-data-set" id="toc-read-data-set" class="nav-link active" data-scroll-target="#read-data-set">Read data set</a></li>
-  <li><a href="#description" id="toc-description" class="nav-link" data-scroll-target="#description">Description</a></li>
+  <li><a href="#intro" id="toc-intro" class="nav-link active" data-scroll-target="#intro">Intro</a></li>
+  <li><a href="#read-data-set" id="toc-read-data-set" class="nav-link" data-scroll-target="#read-data-set">Read data set</a></li>
+  <li><a href="#description" id="toc-description" class="nav-link" data-scroll-target="#description">Description</a>
+  <ul class="collapse">
+  <li><a href="#factor-variables" id="toc-factor-variables" class="nav-link" data-scroll-target="#factor-variables">Factor variables</a></li>
+  <li><a href="#numeric-variables" id="toc-numeric-variables" class="nav-link" data-scroll-target="#numeric-variables">Numeric variables</a></li>
+  </ul></li>
   <li><a href="#eda" id="toc-eda" class="nav-link" data-scroll-target="#eda">EDA</a>
   <ul class="collapse">
   <li><a href="#pairs-plot" id="toc-pairs-plot" class="nav-link" data-scroll-target="#pairs-plot">Pairs plot</a></li>
@@ -129,7 +134,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   <li><a href="#imputation" id="toc-imputation" class="nav-link" data-scroll-target="#imputation">Imputation</a></li>
   <li><a href="#dummy-vars" id="toc-dummy-vars" class="nav-link" data-scroll-target="#dummy-vars">Dummy vars</a></li>
   <li><a href="#scaling" id="toc-scaling" class="nav-link" data-scroll-target="#scaling">Scaling</a></li>
-  <li><a href="#join" id="toc-join" class="nav-link" data-scroll-target="#join">Join</a></li>
+  <li><a href="#join-dummies-categorical-and-scaled-numerical-variables" id="toc-join-dummies-categorical-and-scaled-numerical-variables" class="nav-link" data-scroll-target="#join-dummies-categorical-and-scaled-numerical-variables">Join dummies (categorical) and scaled numerical variables</a></li>
   </ul></li>
   <li><a href="#split-data-into-training-and-testing" id="toc-split-data-into-training-and-testing" class="nav-link" data-scroll-target="#split-data-into-training-and-testing">Split data into training and testing</a>
   <ul class="collapse">
@@ -174,18 +179,27 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 </header>
 
+<section id="intro" class="level1">
+<h1>Intro</h1>
+<p>The aim is to predict development of hepatitis’ stages.</p>
+<blockquote class="blockquote">
+<p>The target attribute for classification is Category (2): blood donors vs.&nbsp;Hepatitis C patients (including its progress (‘just’ Hepatitis C, Fibrosis, Cirrhosis).</p>
+</blockquote>
+<p>I’ll join <em>Cirrhosis</em>, <em>Fibrosis</em> and <em>Hepatitis C</em> into one category <strong>Hepatitis</strong>, the other one will be called <strong>Donor</strong></p>
+</section>
 <section id="read-data-set" class="level1">
 <h1>Read data set</h1>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-1_f64ee17fbffbc7cbaede9096a21dae31">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-1_857ee1cd298346a81cb8d7cdc09d6a5b">
 <details>
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"data/HepatitisCdata.csv"</span>, <span class="at">col_types =</span> <span class="st">"dfdfdddddddddd"</span>) <span class="sc">%&gt;%</span> <span class="fu">select</span>(<span class="sc">-</span>...<span class="dv">1</span>)</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># make re-coded Category variable</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>df<span class="sc">$</span>Diagnosis <span class="ot">&lt;-</span> <span class="fu">if_else</span>(df<span class="sc">$</span>Category <span class="sc">==</span> <span class="st">"0=Blood Donor"</span>, <span class="st">"Donor"</span>, <span class="st">"Hepatitis"</span>)</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>df<span class="sc">$</span>Diagnosis <span class="ot">&lt;-</span> <span class="fu">factor</span>(df<span class="sc">$</span>Diagnosis, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"Donor"</span>, <span class="st">"Hepatitis"</span>))</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> <span class="fu">relocate</span>(Diagnosis, <span class="at">.before =</span> Category) <span class="sc">%&gt;%</span> <span class="fu">select</span>(<span class="sc">-</span>Category)</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># there is 0=Blood Donor and 0s=suspect Blood Donor</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>df<span class="sc">$</span>Diagnosis <span class="ot">&lt;-</span> <span class="fu">if_else</span>(<span class="fu">str_detect</span>(df<span class="sc">$</span>Category, <span class="st">"Donor"</span>), <span class="st">"Donor"</span>, <span class="st">"Hepatitis"</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>df<span class="sc">$</span>Diagnosis <span class="ot">&lt;-</span> <span class="fu">factor</span>(df<span class="sc">$</span>Diagnosis, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"Donor"</span>, <span class="st">"Hepatitis"</span>))</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> <span class="fu">relocate</span>(Diagnosis, <span class="at">.before =</span> Category) <span class="sc">%&gt;%</span> <span class="fu">select</span>(<span class="sc">-</span>Category)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 
@@ -196,59 +210,20 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </div>
-<blockquote class="blockquote">
-<p>The target attribute for classification is Category (2): blood donors vs.&nbsp;Hepatitis C patients (including its progress (‘just’ Hepatitis C, Fibrosis, Cirrhosis).</p>
-</blockquote>
 </section>
 <section id="description" class="level1">
 <h1>Description</h1>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-2_9d4340495bfaa56007817cf4ff025d24">
+<section id="factor-variables" class="level2">
+<h2 class="anchored" data-anchor-id="factor-variables">Factor variables</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-2_7dfeb5e6bfc64f73b3b987ad70c244d4">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>skimr<span class="sc">::</span><span class="fu">skim</span>(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>skim_desc <span class="ot">&lt;-</span> <span class="fu">skim</span>(df)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>skim_desc <span class="sc">%&gt;%</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">yank</span>(<span class="st">"factor"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<table class="table table-sm table-striped">
-<caption>Data summary</caption>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">Name</td>
-<td style="text-align: left;">df</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">Number of rows</td>
-<td style="text-align: left;">615</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Number of columns</td>
-<td style="text-align: left;">13</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">_______________________</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Column type frequency:</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">factor</td>
-<td style="text-align: left;">2</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">numeric</td>
-<td style="text-align: left;">11</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">________________________</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Group variables</td>
-<td style="text-align: left;">None</td>
-</tr>
-</tbody>
-</table>
 <p><strong>Variable type: factor</strong></p>
 <table class="table table-sm table-striped">
 <colgroup>
@@ -276,7 +251,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <td style="text-align: right;">1</td>
 <td style="text-align: left;">FALSE</td>
 <td style="text-align: right;">2</td>
-<td style="text-align: left;">Don: 533, Hep: 82</td>
+<td style="text-align: left;">Don: 540, Hep: 75</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">Sex</td>
@@ -288,6 +263,18 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </tr>
 </tbody>
 </table>
+</div>
+</div>
+</section>
+<section id="numeric-variables" class="level2">
+<h2 class="anchored" data-anchor-id="numeric-variables">Numeric variables</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-3_3e53984ee37d4b31e73dcffafd7154d5">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>skim_desc <span class="sc">%&gt;%</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">yank</span>(<span class="st">"numeric"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
 <p><strong>Variable type: numeric</strong></p>
 <table class="table table-sm table-striped">
 <colgroup>
@@ -467,44 +454,32 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </section>
+</section>
 <section id="eda" class="level1">
 <h1>EDA</h1>
 <section id="pairs-plot" class="level2">
 <h2 class="anchored" data-anchor-id="pairs-plot">Pairs plot</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/pairs_005b8378695ac26f0fb7bfd90363d638">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/pairs_c49581d815bc0cedc454501f79299f4d">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>GGally<span class="sc">::</span><span class="fu">ggpairs</span>(df, <span class="fu">aes</span>(<span class="at">color =</span> Diagnosis, <span class="at">alpha =</span> <span class="fl">0.05</span>, <span class="at">dotsize =</span> <span class="fl">0.01</span>), </span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>        <span class="at">upper =</span> <span class="fu">list</span>(<span class="at">continuous =</span> GGally<span class="sc">::</span><span class="fu">wrap</span>(<span class="st">"cor"</span>, <span class="at">size =</span> <span class="fl">2.0</span>)),</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        <span class="at">diag =</span> <span class="fu">list</span>(<span class="at">continuous =</span> <span class="st">"barDiag"</span>)) <span class="sc">+</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>GGally<span class="sc">::</span><span class="fu">ggpairs</span>(df, <span class="fu">aes</span>(<span class="at">color =</span> Diagnosis), </span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>        <span class="at">upper =</span> <span class="fu">list</span>(<span class="at">continuous =</span> GGally<span class="sc">::</span><span class="fu">wrap</span>(<span class="st">"cor"</span>, <span class="at">size =</span> <span class="fl">2.0</span>)),</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        <span class="at">diag =</span> <span class="fu">list</span>(<span class="at">continuous =</span> <span class="st">"barDiag"</span>),</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        <span class="at">lower =</span> <span class="fu">list</span>(<span class="at">continuous =</span> GGally<span class="sc">::</span><span class="fu">wrap</span>(<span class="st">"points"</span>, <span class="at">alpha =</span> <span class="fl">0.3</span>, <span class="at">size=</span><span class="fl">0.8</span>))) <span class="sc">+</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
+<div class="cell-output-display">
+<p><img src="hepatitis_notebook_files/figure-html/pairs-1.png" class="img-fluid" width="1344"></p>
+</div>
 </div>
 </section>
 <section id="age-v-diagnosis" class="level2">
 <h2 class="anchored" data-anchor-id="age-v-diagnosis">Age v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-3_60f05f87d77213403a125628fddb917f">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-4_376439dca4e880fbbef580d6062b8e4f">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, Age)) <span class="sc">+</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</details>
-<div class="cell-output-display">
-<p><img src="hepatitis_notebook_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid" width="672"></p>
-</div>
-</div>
-</section>
-<section id="age-v-alb" class="level2">
-<h2 class="anchored" data-anchor-id="age-v-alb">Age v ALB</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-4_5fc7eff621f4efe9ee0baac83ef32d3d">
-<details>
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, ALB)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, Age)) <span class="sc">+</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
@@ -516,12 +491,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </section>
-<section id="alp-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="alp-v-diagnosis">ALP v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-5_68bab5491c961d90154b32bcd16ec71e">
+<section id="age-v-alb" class="level2">
+<h2 class="anchored" data-anchor-id="age-v-alb">Age v ALB</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-5_a7f6113bede150070427730132f38899">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, ALP)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, ALB)) <span class="sc">+</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
@@ -533,12 +508,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </section>
-<section id="alt-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="alt-v-diagnosis">ALT v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-6_b2e286a811805261b58f3d5393ccea55">
+<section id="alp-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="alp-v-diagnosis">ALP v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-6_096ea5dacb10f33547996edde823e6e8">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, ALT)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, ALP)) <span class="sc">+</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
@@ -550,63 +525,66 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </section>
-<section id="ast-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="ast-v-diagnosis">AST v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-7_6011b2480d045d024c45b7990e808dbd">
+<section id="alt-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="alt-v-diagnosis">ALT v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-7_c420c89ec16c0691d98c9382a58b8a63">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, AST)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, ALT)) <span class="sc">+</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
 <span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_trans</span>(<span class="at">y =</span> <span class="st">"sqrt"</span>) <span class="sc">+</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>
-<section id="bil-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="bil-v-diagnosis">BIL v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-8_2e1fee5cc5d2fdca6dda19f28f7c5080">
+<section id="ast-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="ast-v-diagnosis">AST v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-8_ac87e226eed05a728b2c53db2365a98c">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, BIL)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, AST)) <span class="sc">+</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
 <span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_trans</span>(<span class="at">y =</span> <span class="st">"sqrt"</span>) <span class="sc">+</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>
-<section id="che-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="che-v-diagnosis">CHE v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-9_e50aedb2536ef150e3d305215a275f43">
+<section id="bil-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="bil-v-diagnosis">BIL v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-9_df577102a7641bfcbda9325266610b75">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, CHE)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, BIL)) <span class="sc">+</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
 <span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_trans</span>(<span class="at">y =</span> <span class="st">"sqrt"</span>) <span class="sc">+</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>
-<section id="chol-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="chol-v-diagnosis">CHOL v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-10_edbe06c567d52564b00458dfd00eedc0">
+<section id="che-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="che-v-diagnosis">CHE v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-10_18d66756d663697e494259d54bd69012">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, CHOL)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, CHE)) <span class="sc">+</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
@@ -618,12 +596,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </section>
-<section id="crea-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="crea-v-diagnosis">CREA v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-11_42c70b7f8ff969970d293e468263c2ca">
+<section id="chol-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="chol-v-diagnosis">CHOL v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-11_481c5de093e78ba880bb15463e24617b">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, CREA)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, CHOL)) <span class="sc">+</span></span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
 <span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
@@ -635,38 +613,57 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </section>
-<section id="ggt-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="ggt-v-diagnosis">GGT v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-12_4ca075636d5aef088de17724ff769263">
+<section id="crea-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="crea-v-diagnosis">CREA v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-12_66a987556d8e6f3b1b814c06aeaf1c5a">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, GGT)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, CREA)) <span class="sc">+</span></span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.2</span>, <span class="at">size =</span> <span class="fl">0.3</span>) <span class="sc">+</span></span>
 <span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
 <span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_trans</span>(<span class="at">y =</span> <span class="st">"sqrt"</span>) <span class="sc">+</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>
-<section id="sex-v-diagnosis" class="level2">
-<h2 class="anchored" data-anchor-id="sex-v-diagnosis">Sex v Diagnosis</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-13_6b661f3333bca6e2fad860b2178606bc">
+<section id="ggt-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="ggt-v-diagnosis">GGT v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-13_805e3348011e09b19515730503bdefbd">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>sex_n <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> <span class="fu">group_by</span>(Diagnosis, Sex) <span class="sc">%&gt;%</span> <span class="fu">summarise</span>(<span class="at">N =</span> <span class="fu">n</span>())</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(sex_n, <span class="fu">aes</span>(Diagnosis, N)) <span class="sc">+</span></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_col</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Sex), <span class="at">position =</span> <span class="st">"fill"</span>) <span class="sc">+</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set2"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>) <span class="sc">+</span></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ylab</span>(<span class="st">"Proportion"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df, <span class="fu">aes</span>(Diagnosis, GGT)) <span class="sc">+</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_violin</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">alpha =</span> <span class="fl">0.5</span>, <span class="at">size =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Diagnosis), <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set1"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_trans</span>(<span class="at">y =</span> <span class="st">"sqrt"</span>) <span class="sc">+</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="sex-v-diagnosis" class="level2">
+<h2 class="anchored" data-anchor-id="sex-v-diagnosis">Sex v Diagnosis</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-14_a527642e5c23c2dd01215544277c36c5">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>sex_n <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> <span class="fu">group_by</span>(Diagnosis, Sex) <span class="sc">%&gt;%</span> <span class="fu">summarise</span>(<span class="at">N =</span> <span class="fu">n</span>())</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(sex_n, <span class="fu">aes</span>(Diagnosis, N)) <span class="sc">+</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_col</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Sex), <span class="at">position =</span> <span class="st">"fill"</span>) <span class="sc">+</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_brewer</span>(<span class="at">palette =</span> <span class="st">"Set2"</span>, <span class="at">direction =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">""</span>) <span class="sc">+</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ylab</span>(<span class="st">"Proportion"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="hepatitis_notebook_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>
@@ -675,12 +672,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h1>Data processing</h1>
 <section id="imputation" class="level2">
 <h2 class="anchored" data-anchor-id="imputation">Imputation</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-14_8364765de4baada03dc658a0eab1a7ea">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-15_fe319529b2039730aea855b57c7746fb">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(mice)</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>imp_mice <span class="ot">&lt;-</span> <span class="fu">mice</span>(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(mice)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>imp_mice <span class="ot">&lt;-</span> <span class="fu">mice</span>(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-stdout">
 <pre><code>
@@ -713,596 +710,70 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>df_imp <span class="ot">&lt;-</span> <span class="fu">complete</span>(imp_mice)</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>skimr<span class="sc">::</span><span class="fu">skim</span>(df_imp)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>df_imp <span class="ot">&lt;-</span> <span class="fu">complete</span>(imp_mice)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
-<div class="cell-output-display">
-<table class="table table-sm table-striped">
-<caption>Data summary</caption>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">Name</td>
-<td style="text-align: left;">df_imp</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">Number of rows</td>
-<td style="text-align: left;">615</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Number of columns</td>
-<td style="text-align: left;">13</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">_______________________</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Column type frequency:</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">factor</td>
-<td style="text-align: left;">2</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">numeric</td>
-<td style="text-align: left;">11</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">________________________</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Group variables</td>
-<td style="text-align: left;">None</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Variable type: factor</strong></p>
-<table class="table table-sm table-striped">
-<colgroup>
-<col style="width: 19%">
-<col style="width: 13%">
-<col style="width: 19%">
-<col style="width: 10%">
-<col style="width: 12%">
-<col style="width: 24%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: left;">skim_variable</th>
-<th style="text-align: right;">n_missing</th>
-<th style="text-align: right;">complete_rate</th>
-<th style="text-align: left;">ordered</th>
-<th style="text-align: right;">n_unique</th>
-<th style="text-align: left;">top_counts</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">Diagnosis</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: left;">FALSE</td>
-<td style="text-align: right;">2</td>
-<td style="text-align: left;">Don: 533, Hep: 82</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">Sex</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: left;">FALSE</td>
-<td style="text-align: right;">2</td>
-<td style="text-align: left;">m: 377, f: 238</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Variable type: numeric</strong></p>
-<table class="table table-sm table-striped">
-<colgroup>
-<col style="width: 15%">
-<col style="width: 11%">
-<col style="width: 15%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 9%">
-<col style="width: 6%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: left;">skim_variable</th>
-<th style="text-align: right;">n_missing</th>
-<th style="text-align: right;">complete_rate</th>
-<th style="text-align: right;">mean</th>
-<th style="text-align: right;">sd</th>
-<th style="text-align: right;">p0</th>
-<th style="text-align: right;">p25</th>
-<th style="text-align: right;">p50</th>
-<th style="text-align: right;">p75</th>
-<th style="text-align: right;">p100</th>
-<th style="text-align: left;">hist</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">Age</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">47.41</td>
-<td style="text-align: right;">10.06</td>
-<td style="text-align: right;">19.00</td>
-<td style="text-align: right;">39.00</td>
-<td style="text-align: right;">47.00</td>
-<td style="text-align: right;">54.00</td>
-<td style="text-align: right;">77.00</td>
-<td style="text-align: left;">▁▆▇▅▁</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">ALB</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">41.62</td>
-<td style="text-align: right;">5.78</td>
-<td style="text-align: right;">14.90</td>
-<td style="text-align: right;">38.80</td>
-<td style="text-align: right;">41.90</td>
-<td style="text-align: right;">45.20</td>
-<td style="text-align: right;">82.20</td>
-<td style="text-align: left;">▁▇▇▁▁</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">ALP</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">68.22</td>
-<td style="text-align: right;">26.19</td>
-<td style="text-align: right;">11.30</td>
-<td style="text-align: right;">52.50</td>
-<td style="text-align: right;">66.20</td>
-<td style="text-align: right;">79.75</td>
-<td style="text-align: right;">416.60</td>
-<td style="text-align: left;">▇▁▁▁▁</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">ALT</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">28.45</td>
-<td style="text-align: right;">25.45</td>
-<td style="text-align: right;">0.90</td>
-<td style="text-align: right;">16.40</td>
-<td style="text-align: right;">23.00</td>
-<td style="text-align: right;">33.05</td>
-<td style="text-align: right;">325.30</td>
-<td style="text-align: left;">▇▁▁▁▁</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">AST</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">34.79</td>
-<td style="text-align: right;">33.09</td>
-<td style="text-align: right;">10.60</td>
-<td style="text-align: right;">21.60</td>
-<td style="text-align: right;">25.90</td>
-<td style="text-align: right;">32.90</td>
-<td style="text-align: right;">324.00</td>
-<td style="text-align: left;">▇▁▁▁▁</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">BIL</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">11.40</td>
-<td style="text-align: right;">19.67</td>
-<td style="text-align: right;">0.80</td>
-<td style="text-align: right;">5.30</td>
-<td style="text-align: right;">7.30</td>
-<td style="text-align: right;">11.20</td>
-<td style="text-align: right;">254.00</td>
-<td style="text-align: left;">▇▁▁▁▁</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">CHE</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">8.20</td>
-<td style="text-align: right;">2.21</td>
-<td style="text-align: right;">1.42</td>
-<td style="text-align: right;">6.94</td>
-<td style="text-align: right;">8.26</td>
-<td style="text-align: right;">9.59</td>
-<td style="text-align: right;">16.41</td>
-<td style="text-align: left;">▁▅▇▂▁</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">CHOL</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">5.37</td>
-<td style="text-align: right;">1.13</td>
-<td style="text-align: right;">1.43</td>
-<td style="text-align: right;">4.62</td>
-<td style="text-align: right;">5.30</td>
-<td style="text-align: right;">6.07</td>
-<td style="text-align: right;">9.67</td>
-<td style="text-align: left;">▁▅▇▂▁</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">CREA</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">81.29</td>
-<td style="text-align: right;">49.76</td>
-<td style="text-align: right;">8.00</td>
-<td style="text-align: right;">67.00</td>
-<td style="text-align: right;">77.00</td>
-<td style="text-align: right;">88.00</td>
-<td style="text-align: right;">1079.10</td>
-<td style="text-align: left;">▇▁▁▁▁</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">GGT</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">39.53</td>
-<td style="text-align: right;">54.66</td>
-<td style="text-align: right;">4.50</td>
-<td style="text-align: right;">15.70</td>
-<td style="text-align: right;">23.30</td>
-<td style="text-align: right;">40.20</td>
-<td style="text-align: right;">650.90</td>
-<td style="text-align: left;">▇▁▁▁▁</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">PROT</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">72.04</td>
-<td style="text-align: right;">5.40</td>
-<td style="text-align: right;">44.80</td>
-<td style="text-align: right;">69.30</td>
-<td style="text-align: right;">72.20</td>
-<td style="text-align: right;">75.40</td>
-<td style="text-align: right;">90.00</td>
-<td style="text-align: left;">▁▁▇▇▁</td>
-</tr>
-</tbody>
-</table>
-</div>
 </div>
 </section>
 <section id="dummy-vars" class="level2">
 <h2 class="anchored" data-anchor-id="dummy-vars">Dummy vars</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-15_f5ad86d4c6b2281f77ad1286015fc4e0">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-16_c1f7cce56660f6a1bfc4e543a0b611d8">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>to_dum <span class="ot">&lt;-</span> df_imp <span class="sc">%&gt;%</span> <span class="fu">select</span>(Sex)</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="co"># make an obj</span></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>dummies <span class="ot">&lt;-</span> <span class="fu">dummyVars</span>(<span class="sc">~</span> ., <span class="at">data =</span> to_dum)</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="co"># apply it</span></span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>df_dummy <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="fu">predict</span>(dummies, <span class="at">newdata =</span> to_dum))</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df_dummy)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>to_dum <span class="ot">&lt;-</span> df_imp <span class="sc">%&gt;%</span> <span class="fu">select</span>(Sex)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="co"># make an obj</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>dummies <span class="ot">&lt;-</span> <span class="fu">dummyVars</span>(<span class="sc">~</span> ., <span class="at">data =</span> to_dum)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="co"># apply it</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>df_dummy <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="fu">predict</span>(dummies, <span class="at">newdata =</span> to_dum))</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df_dummy)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<div class="kable-table">
-<table class="table table-sm table-striped">
-<thead>
-<tr class="header">
-<th style="text-align: right;">Sex.m</th>
-<th style="text-align: right;">Sex.f</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-</tr>
-</tbody>
-</table>
+
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["Sex.m"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["Sex.f"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"1","2":"0","_rn_":"1"},{"1":"1","2":"0","_rn_":"2"},{"1":"1","2":"0","_rn_":"3"},{"1":"1","2":"0","_rn_":"4"},{"1":"1","2":"0","_rn_":"5"},{"1":"1","2":"0","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
 </div>
 </div>
 </div>
 </section>
 <section id="scaling" class="level2">
 <h2 class="anchored" data-anchor-id="scaling">Scaling</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-16_4b0d2e962c619863926afc8f0a7fd87c">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-17_9be017fe287cf4bae153d74824812503">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>df_scaled <span class="ot">&lt;-</span> df_imp <span class="sc">%&gt;%</span> </span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span><span class="fu">c</span>(Sex, Diagnosis)) <span class="sc">%&gt;%</span> </span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>()</span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df_scaled)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>df_scaled <span class="ot">&lt;-</span> df_imp <span class="sc">%&gt;%</span> </span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span><span class="fu">c</span>(Sex, Diagnosis)) <span class="sc">%&gt;%</span> </span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>()</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df_scaled)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<div class="kable-table">
-<table class="table table-sm table-striped">
-<colgroup>
-<col style="width: 8%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-<col style="width: 9%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: right;">Age</th>
-<th style="text-align: right;">ALB</th>
-<th style="text-align: right;">ALP</th>
-<th style="text-align: right;">ALT</th>
-<th style="text-align: right;">AST</th>
-<th style="text-align: right;">BIL</th>
-<th style="text-align: right;">CHE</th>
-<th style="text-align: right;">CHOL</th>
-<th style="text-align: right;">CREA</th>
-<th style="text-align: right;">GGT</th>
-<th style="text-align: right;">PROT</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.5399066</td>
-<td style="text-align: right;">-0.6003776</td>
-<td style="text-align: right;">-0.8151857</td>
-<td style="text-align: right;">-0.3833810</td>
-<td style="text-align: right;">-0.1980744</td>
-<td style="text-align: right;">-0.5742661</td>
-<td style="text-align: right;">-1.9011455</td>
-<td style="text-align: right;">0.4966660</td>
-<td style="text-align: right;">-0.5018777</td>
-<td style="text-align: right;">-0.5639895</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.5399066</td>
-<td style="text-align: right;">0.0793549</td>
-<td style="text-align: right;">-0.4104584</td>
-<td style="text-align: right;">-0.3048090</td>
-<td style="text-align: right;">-0.3810650</td>
-<td style="text-align: right;">1.3480634</td>
-<td style="text-align: right;">-0.5088342</td>
-<td style="text-align: right;">-0.1464704</td>
-<td style="text-align: right;">-0.4378467</td>
-<td style="text-align: right;">0.8253512</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">0.9143702</td>
-<td style="text-align: right;">0.2473787</td>
-<td style="text-align: right;">0.3046907</td>
-<td style="text-align: right;">0.5383284</td>
-<td style="text-align: right;">-0.2692374</td>
-<td style="text-align: right;">0.2916890</td>
-<td style="text-align: right;">-0.1541052</td>
-<td style="text-align: right;">0.0947058</td>
-<td style="text-align: right;">-0.1158625</td>
-<td style="text-align: right;">1.3440383</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">0.2737959</td>
-<td style="text-align: right;">-0.6194712</td>
-<td style="text-align: right;">0.0846448</td>
-<td style="text-align: right;">-0.3682710</td>
-<td style="text-align: right;">0.3813956</td>
-<td style="text-align: right;">-0.3929142</td>
-<td style="text-align: right;">-0.5620436</td>
-<td style="text-align: right;">-0.0258823</td>
-<td style="text-align: right;">-0.1048858</td>
-<td style="text-align: right;">0.6771548</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.4187169</td>
-<td style="text-align: right;">0.2244663</td>
-<td style="text-align: right;">0.1632326</td>
-<td style="text-align: right;">-0.3017870</td>
-<td style="text-align: right;">-0.0913300</td>
-<td style="text-align: right;">0.4322366</td>
-<td style="text-align: right;">-0.9345090</td>
-<td style="text-align: right;">-0.1062744</td>
-<td style="text-align: right;">-0.1762346</td>
-<td style="text-align: right;">-0.6195631</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.0032092</td>
-<td style="text-align: right;">-0.9516999</td>
-<td style="text-align: right;">-0.3908115</td>
-<td style="text-align: right;">-0.4559089</td>
-<td style="text-align: right;">0.0459129</td>
-<td style="text-align: right;">0.7813389</td>
-<td style="text-align: right;">0.5996939</td>
-<td style="text-align: right;">0.5971560</td>
-<td style="text-align: right;">0.9415628</td>
-<td style="text-align: right;">0.3622376</td>
-</tr>
-</tbody>
-</table>
+
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["Age"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["ALB"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["ALP"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["ALT"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["AST"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["BIL"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["CHE"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["CHOL"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["CREA"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["GGT"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["PROT"],"name":[11],"type":["dbl"],"align":["right"]}],"data":[{"1":"-1.532369","2":"-0.541187563","3":"-0.59727370","4":"-0.81638055","5":"-0.3833810","6":"-0.19807443","7":"-0.5742661","8":"-1.8840299","9":"0.49666598","10":"-0.5018777","11":"-0.5584296","_rn_":"1"},{"1":"-1.532369","2":"-0.541187563","3":"0.07970782","4":"-0.41222260","5":"-0.3048090","6":"-0.38106496","7":"1.3480634","8":"-0.4980510","9":"-0.14647039","10":"-0.4378467","11":"0.8258647","_rn_":"2"},{"1":"-1.532369","2":"0.912446790","3":"0.24705157","4":"0.30192056","5":"0.5383284","6":"-0.26923741","7":"0.2916890","8":"-0.1449353","9":"0.09470575","10":"-0.1158625","11":"1.3426679","_rn_":"3"},{"1":"-1.532369","2":"0.272155468","3":"-0.61629004","4":"0.08218421","5":"-0.3682710","6":"0.38139556","7":"-0.3929142","8":"-0.5510183","9":"-0.02588232","10":"-0.1048858","11":"0.6782067","_rn_":"4"},{"1":"-1.532369","2":"-0.420051367","3":"0.22423196","4":"0.16066148","5":"-0.3017870","6":"-0.09132996","7":"0.4322366","8":"-0.9217897","9":"-0.10627436","10":"-0.1762346","11":"-0.6138013","_rn_":"5"},{"1":"-1.532369","2":"-0.004727266","3":"-0.94717427","4":"-0.39260328","5":"-0.4559089","6":"0.04591293","7":"0.7813389","8":"0.6054354","9":"0.59715604","10":"0.9415628","11":"0.3644333","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
 </div>
 </div>
 </div>
 </section>
-<section id="join" class="level2">
-<h2 class="anchored" data-anchor-id="join">Join</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-17_a450b84d8b1d63dc2e4610dd6e0f6ef8">
+<section id="join-dummies-categorical-and-scaled-numerical-variables" class="level2">
+<h2 class="anchored" data-anchor-id="join-dummies-categorical-and-scaled-numerical-variables">Join dummies (categorical) and scaled numerical variables</h2>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-18_ab2fb3700fd3f1d0d6a0335df19b2ba8">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>df_proc <span class="ot">&lt;-</span> <span class="fu">bind_cols</span>(df_scaled, df_dummy)</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>df_proc<span class="sc">$</span>Diagnosis <span class="ot">&lt;-</span> df<span class="sc">$</span>Diagnosis</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df_proc) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>df_proc <span class="ot">&lt;-</span> <span class="fu">bind_cols</span>(df_scaled, df_dummy)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>df_proc<span class="sc">$</span>Diagnosis <span class="ot">&lt;-</span> df<span class="sc">$</span>Diagnosis</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df_proc) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<div class="kable-table">
-<table class="table table-sm table-striped">
-<colgroup>
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 4%">
-<col style="width: 4%">
-<col style="width: 7%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: right;">Age</th>
-<th style="text-align: right;">ALB</th>
-<th style="text-align: right;">ALP</th>
-<th style="text-align: right;">ALT</th>
-<th style="text-align: right;">AST</th>
-<th style="text-align: right;">BIL</th>
-<th style="text-align: right;">CHE</th>
-<th style="text-align: right;">CHOL</th>
-<th style="text-align: right;">CREA</th>
-<th style="text-align: right;">GGT</th>
-<th style="text-align: right;">PROT</th>
-<th style="text-align: right;">Sex.m</th>
-<th style="text-align: right;">Sex.f</th>
-<th style="text-align: left;">Diagnosis</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.5399066</td>
-<td style="text-align: right;">-0.6003776</td>
-<td style="text-align: right;">-0.8151857</td>
-<td style="text-align: right;">-0.3833810</td>
-<td style="text-align: right;">-0.1980744</td>
-<td style="text-align: right;">-0.5742661</td>
-<td style="text-align: right;">-1.9011455</td>
-<td style="text-align: right;">0.4966660</td>
-<td style="text-align: right;">-0.5018777</td>
-<td style="text-align: right;">-0.5639895</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: left;">Donor</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.5399066</td>
-<td style="text-align: right;">0.0793549</td>
-<td style="text-align: right;">-0.4104584</td>
-<td style="text-align: right;">-0.3048090</td>
-<td style="text-align: right;">-0.3810650</td>
-<td style="text-align: right;">1.3480634</td>
-<td style="text-align: right;">-0.5088342</td>
-<td style="text-align: right;">-0.1464704</td>
-<td style="text-align: right;">-0.4378467</td>
-<td style="text-align: right;">0.8253512</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: left;">Donor</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">0.9143702</td>
-<td style="text-align: right;">0.2473787</td>
-<td style="text-align: right;">0.3046907</td>
-<td style="text-align: right;">0.5383284</td>
-<td style="text-align: right;">-0.2692374</td>
-<td style="text-align: right;">0.2916890</td>
-<td style="text-align: right;">-0.1541052</td>
-<td style="text-align: right;">0.0947058</td>
-<td style="text-align: right;">-0.1158625</td>
-<td style="text-align: right;">1.3440383</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: left;">Donor</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">0.2737959</td>
-<td style="text-align: right;">-0.6194712</td>
-<td style="text-align: right;">0.0846448</td>
-<td style="text-align: right;">-0.3682710</td>
-<td style="text-align: right;">0.3813956</td>
-<td style="text-align: right;">-0.3929142</td>
-<td style="text-align: right;">-0.5620436</td>
-<td style="text-align: right;">-0.0258823</td>
-<td style="text-align: right;">-0.1048858</td>
-<td style="text-align: right;">0.6771548</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: left;">Donor</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.4187169</td>
-<td style="text-align: right;">0.2244663</td>
-<td style="text-align: right;">0.1632326</td>
-<td style="text-align: right;">-0.3017870</td>
-<td style="text-align: right;">-0.0913300</td>
-<td style="text-align: right;">0.4322366</td>
-<td style="text-align: right;">-0.9345090</td>
-<td style="text-align: right;">-0.1062744</td>
-<td style="text-align: right;">-0.1762346</td>
-<td style="text-align: right;">-0.6195631</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: left;">Donor</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">-1.532369</td>
-<td style="text-align: right;">-0.0032092</td>
-<td style="text-align: right;">-0.9516999</td>
-<td style="text-align: right;">-0.3908115</td>
-<td style="text-align: right;">-0.4559089</td>
-<td style="text-align: right;">0.0459129</td>
-<td style="text-align: right;">0.7813389</td>
-<td style="text-align: right;">0.5996939</td>
-<td style="text-align: right;">0.5971560</td>
-<td style="text-align: right;">0.9415628</td>
-<td style="text-align: right;">0.3622376</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">0</td>
-<td style="text-align: left;">Donor</td>
-</tr>
-</tbody>
-</table>
+
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["Age"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["ALB"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["ALP"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["ALT"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["AST"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["BIL"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["CHE"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["CHOL"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["CREA"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["GGT"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["PROT"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["Sex.m"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["Sex.f"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["Diagnosis"],"name":[14],"type":["fct"],"align":["left"]}],"data":[{"1":"-1.532369","2":"-0.541187563","3":"-0.59727370","4":"-0.81638055","5":"-0.3833810","6":"-0.19807443","7":"-0.5742661","8":"-1.8840299","9":"0.49666598","10":"-0.5018777","11":"-0.5584296","12":"1","13":"0","14":"Donor","_rn_":"1"},{"1":"-1.532369","2":"-0.541187563","3":"0.07970782","4":"-0.41222260","5":"-0.3048090","6":"-0.38106496","7":"1.3480634","8":"-0.4980510","9":"-0.14647039","10":"-0.4378467","11":"0.8258647","12":"1","13":"0","14":"Donor","_rn_":"2"},{"1":"-1.532369","2":"0.912446790","3":"0.24705157","4":"0.30192056","5":"0.5383284","6":"-0.26923741","7":"0.2916890","8":"-0.1449353","9":"0.09470575","10":"-0.1158625","11":"1.3426679","12":"1","13":"0","14":"Donor","_rn_":"3"},{"1":"-1.532369","2":"0.272155468","3":"-0.61629004","4":"0.08218421","5":"-0.3682710","6":"0.38139556","7":"-0.3929142","8":"-0.5510183","9":"-0.02588232","10":"-0.1048858","11":"0.6782067","12":"1","13":"0","14":"Donor","_rn_":"4"},{"1":"-1.532369","2":"-0.420051367","3":"0.22423196","4":"0.16066148","5":"-0.3017870","6":"-0.09132996","7":"0.4322366","8":"-0.9217897","9":"-0.10627436","10":"-0.1762346","11":"-0.6138013","12":"1","13":"0","14":"Donor","_rn_":"5"},{"1":"-1.532369","2":"-0.004727266","3":"-0.94717427","4":"-0.39260328","5":"-0.4559089","6":"0.04591293","7":"0.7813389","8":"0.6054354","9":"0.59715604","10":"0.9415628","11":"0.3644333","12":"1","13":"0","14":"Donor","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
 </div>
 </div>
 </div>
@@ -1313,42 +784,28 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <div class="cell" data-hash="hepatitis_notebook_cache/html/data.split_16d85d5fe168631e4fca64eda5d57a68">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1234</span>)</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>sample_set <span class="ot">&lt;-</span> <span class="fu">createDataPartition</span>(<span class="at">y =</span> df_proc<span class="sc">$</span>Diagnosis, <span class="at">p =</span> .<span class="dv">75</span>, <span class="at">list =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>df_train <span class="ot">&lt;-</span> df_proc[sample_set,]</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>df_test <span class="ot">&lt;-</span> df_proc[<span class="sc">-</span>sample_set,]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1234</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>sample_set <span class="ot">&lt;-</span> <span class="fu">createDataPartition</span>(<span class="at">y =</span> df_proc<span class="sc">$</span>Diagnosis, <span class="at">p =</span> .<span class="dv">75</span>, <span class="at">list =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>df_train <span class="ot">&lt;-</span> df_proc[sample_set,]</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>df_test <span class="ot">&lt;-</span> df_proc[<span class="sc">-</span>sample_set,]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 <section id="target-class-equalization-in-training-data-set" class="level2">
 <h2 class="anchored" data-anchor-id="target-class-equalization-in-training-data-set">Target class equalization in training data set</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/smote_fa000df6c0d47779281409b86f7e2ec6">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/smote_3e354de731357059ce516b4be0edac60">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># DMwR::SMOTE for imbalanced data: over=225 and under=150 give me 1:1 ratio</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>df_train_smote <span class="ot">&lt;-</span> <span class="fu">SMOTE</span>(Diagnosis <span class="sc">~</span> ., <span class="fu">data.frame</span>(df_train), <span class="at">perc.over =</span> <span class="dv">400</span>, <span class="at">perc.under =</span> <span class="dv">215</span>)</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>df_train_smote <span class="sc">%&gt;%</span> <span class="fu">group_by</span>(Diagnosis) <span class="sc">%&gt;%</span> <span class="fu">summarise</span>(<span class="at">N=</span><span class="fu">n</span>())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># DMwR::SMOTE for imbalanced data: over=225 and under=150 give me 1:1 ratio</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>df_train_smote <span class="ot">&lt;-</span> <span class="fu">SMOTE</span>(Diagnosis <span class="sc">~</span> ., <span class="fu">data.frame</span>(df_train), <span class="at">perc.over =</span> <span class="dv">500</span>, <span class="at">perc.under =</span> <span class="dv">190</span>)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>df_train_smote <span class="sc">%&gt;%</span> <span class="fu">group_by</span>(Diagnosis) <span class="sc">%&gt;%</span> <span class="fu">summarise</span>(<span class="at">N=</span><span class="fu">n</span>())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<div class="kable-table">
-<table class="table table-sm table-striped">
-<thead>
-<tr class="header">
-<th style="text-align: left;">Diagnosis</th>
-<th style="text-align: right;">N</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">Donor</td>
-<td style="text-align: right;">533</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">Hepatitis</td>
-<td style="text-align: right;">310</td>
-</tr>
-</tbody>
-</table>
+
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":["Diagnosis"],"name":[1],"type":["fct"],"align":["left"]},{"label":["N"],"name":[2],"type":["int"],"align":["right"]}],"data":[{"1":"Donor","2":"541"},{"1":"Hepatitis","2":"342"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
 </div>
 </div>
 </div>
@@ -1358,199 +815,208 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h1>Random Forest</h1>
 <section id="training" class="level2">
 <h2 class="anchored" data-anchor-id="training">Training</h2>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/rf.train_4df5c21120bb98dc178972b62d4cce34">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/rf.train_b42bfb539fe26b370022beda99a721f4">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(doParallel)</span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">120</span>)</span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>THREADS <span class="ot">&lt;-</span> <span class="dv">12</span></span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>cl <span class="ot">&lt;-</span> <span class="fu">makePSOCKcluster</span>(THREADS)</span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="fu">registerDoParallel</span>(cl)</span>
-<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>fit_ctrl <span class="ot">&lt;-</span> <span class="fu">trainControl</span>(<span class="do">## 5-fold CV</span></span>
-<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>                           <span class="at">method =</span> <span class="st">"repeatedcv"</span>,</span>
-<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>                           <span class="at">number =</span> <span class="dv">5</span>,</span>
-<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>                           <span class="at">repeats =</span> <span class="dv">10</span>, </span>
-<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>                           <span class="at">allowParallel =</span> T,</span>
-<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>                           <span class="at">classProbs =</span> T,</span>
-<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>                           <span class="at">summaryFunction =</span> twoClassSummary)</span>
-<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>fit_rf <span class="ot">&lt;-</span> <span class="fu">train</span>(Diagnosis <span class="sc">~</span> ., </span>
-<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>                 <span class="at">data =</span> df_train_smote, </span>
-<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>                 <span class="at">metric =</span> <span class="st">"ROC"</span>, </span>
-<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>                 <span class="at">method =</span> <span class="st">"rf"</span>, </span>
-<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>                 <span class="at">trControl =</span> fit_ctrl,</span>
-<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>                 <span class="at">tuneGrid =</span> <span class="fu">expand.grid</span>(<span class="at">.mtry =</span> <span class="fu">seq</span>(<span class="dv">2</span>, <span class="dv">12</span>, <span class="fl">0.5</span>)),</span>
-<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>                 <span class="at">ntree =</span> <span class="dv">10</span>,</span>
-<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>                 <span class="at">nodesize =</span> <span class="dv">1</span>,</span>
-<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbosity =</span> <span class="dv">0</span>,</span>
-<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a><span class="fu">stopCluster</span>(cl)</span>
-<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a>fit_rf</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(doParallel)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">120</span>)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>THREADS <span class="ot">&lt;-</span> <span class="dv">8</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a><span class="co">#cl &lt;- makePSOCKcluster(THREADS)</span></span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a><span class="co">#registerDoParallel(cl)</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>fit_ctrl <span class="ot">&lt;-</span> <span class="fu">trainControl</span>(<span class="do">## 5-fold CV</span></span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>                           <span class="at">method =</span> <span class="st">"repeatedcv"</span>,</span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>                           <span class="at">number =</span> <span class="dv">5</span>,</span>
+<span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>                           <span class="at">repeats =</span> <span class="dv">10</span>, </span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>                           <span class="at">allowParallel =</span> T,</span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>                           <span class="at">classProbs =</span> T,</span>
+<span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a>                           <span class="at">summaryFunction =</span> twoClassSummary)</span>
+<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>fit_rf <span class="ot">&lt;-</span> <span class="fu">train</span>(Diagnosis <span class="sc">~</span> ., </span>
+<span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a>                 <span class="at">data =</span> df_train_smote, </span>
+<span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a>                 <span class="at">metric =</span> <span class="st">"ROC"</span>, </span>
+<span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>                 <span class="at">method =</span> <span class="st">"rf"</span>, </span>
+<span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a>                 <span class="at">trControl =</span> fit_ctrl,</span>
+<span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>                 <span class="at">tuneGrid =</span> <span class="fu">expand.grid</span>(<span class="at">.mtry =</span> <span class="fu">seq</span>(<span class="dv">2</span>, <span class="dv">12</span>, <span class="fl">0.5</span>)),</span>
+<span id="cb24-25"><a href="#cb24-25" aria-hidden="true" tabindex="-1"></a>                 <span class="at">ntree =</span> <span class="dv">10</span>,</span>
+<span id="cb24-26"><a href="#cb24-26" aria-hidden="true" tabindex="-1"></a>                 <span class="at">nodesize =</span> <span class="dv">1</span>,</span>
+<span id="cb24-27"><a href="#cb24-27" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbosity =</span> <span class="dv">0</span>,</span>
+<span id="cb24-28"><a href="#cb24-28" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb24-29"><a href="#cb24-29" aria-hidden="true" tabindex="-1"></a><span class="co">#stopCluster(cl)</span></span>
+<span id="cb24-30"><a href="#cb24-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-31"><a href="#cb24-31" aria-hidden="true" tabindex="-1"></a>fit_rf</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Random Forest 
 
-843 samples
+883 samples
  13 predictor
   2 classes: 'Donor', 'Hepatitis' 
 
 No pre-processing
 Resampling: Cross-Validated (5 fold, repeated 10 times) 
-Summary of sample sizes: 675, 674, 674, 675, 674, 674, ... 
+Summary of sample sizes: 707, 706, 707, 707, 705, 706, ... 
 Resampling results across tuning parameters:
 
   mtry  ROC        Sens       Spec     
-   2.0  0.9985880  0.9885435  0.9787097
-   2.5  0.9989469  0.9894922  0.9780645
-   3.0  0.9986692  0.9930506  0.9809677
-   3.5  0.9988665  0.9915394  0.9812903
-   4.0  0.9987942  0.9919221  0.9793548
-   4.5  0.9991911  0.9915412  0.9816129
-   5.0  0.9985264  0.9919185  0.9793548
-   5.5  0.9984674  0.9892929  0.9819355
-   6.0  0.9973914  0.9889155  0.9793548
-   6.5  0.9980155  0.9902310  0.9822581
-   7.0  0.9978764  0.9900458  0.9777419
-   7.5  0.9975588  0.9908023  0.9751613
-   8.0  0.9974876  0.9902292  0.9787097
-   8.5  0.9973645  0.9902292  0.9780645
-   9.0  0.9975708  0.9902363  0.9783871
-   9.5  0.9976452  0.9906119  0.9722581
-  10.0  0.9976399  0.9892999  0.9764516
-  10.5  0.9974495  0.9883601  0.9741935
-  11.0  0.9961411  0.9857309  0.9741935
-  11.5  0.9972779  0.9870393  0.9725806
-  12.0  0.9948295  0.9859143  0.9703226
+   2.0  0.9983023  0.9950051  0.9801364
+   2.5  0.9992330  0.9927863  0.9795737
+   3.0  0.9988346  0.9918671  0.9830648
+   3.5  0.9992362  0.9929732  0.9801194
+   4.0  0.9987590  0.9920455  0.9792455
+   4.5  0.9988656  0.9911196  0.9824638
+   5.0  0.9984439  0.9903891  0.9815772
+   5.5  0.9991456  0.9909395  0.9795396
+   6.0  0.9985600  0.9901971  0.9783632
+   6.5  0.9993135  0.9905674  0.9812702
+   7.0  0.9982352  0.9911247  0.9807289
+   7.5  0.9982974  0.9898301  0.9786701
+   8.0  0.9983359  0.9890877  0.9775320
+   8.5  0.9987250  0.9888991  0.9813001
+   9.0  0.9980016  0.9881651  0.9801449
+   9.5  0.9976724  0.9887207  0.9813129
+  10.0  0.9976701  0.9885372  0.9798465
+  10.5  0.9979829  0.9887207  0.9801535
+  11.0  0.9982339  0.9866871  0.9798252
+  11.5  0.9964957  0.9872392  0.9807118
+  12.0  0.9973089  0.9872426  0.9780946
 
 ROC was used to select the optimal model using the largest value.
-The final value used for the model was mtry = 4.5.</code></pre>
+The final value used for the model was mtry = 6.5.</code></pre>
 </div>
 </div>
 </section>
 <section id="testing" class="level2">
 <h2 class="anchored" data-anchor-id="testing">Testing</h2>
+<p>Here’s a function to summarize a model’s performance, it is used below.</p>
 <div class="cell" data-hash="hepatitis_notebook_cache/html/roc.fun_b8317d2bbcfc08cb9c3074c446a7e1da">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>get_roc <span class="ot">&lt;-</span> <span class="cf">function</span>(fit.obj, testing.df){</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>  pred_prob <span class="ot">&lt;-</span> <span class="fu">predict.train</span>(fit.obj, <span class="at">newdata =</span> testing.df, <span class="at">type =</span> <span class="st">"prob"</span>)</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>  pred_roc <span class="ot">&lt;-</span> <span class="fu">prediction</span>(<span class="at">predictions =</span> pred_prob<span class="sc">$</span>Hepatitis, <span class="at">labels =</span> testing.df<span class="sc">$</span>Diagnosis)</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>  perf_roc <span class="ot">&lt;-</span> <span class="fu">performance</span>(pred_roc, <span class="at">measure =</span> <span class="st">"tpr"</span>, <span class="at">x.measure =</span> <span class="st">"fpr"</span>)</span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(<span class="fu">list</span>(perf_roc, pred_roc))</span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>get_roc <span class="ot">&lt;-</span> <span class="cf">function</span>(fit.obj, testing.df){</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  pred_prob <span class="ot">&lt;-</span> <span class="fu">predict.train</span>(fit.obj, <span class="at">newdata =</span> testing.df, <span class="at">type =</span> <span class="st">"prob"</span>)</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  pred_roc <span class="ot">&lt;-</span> <span class="fu">prediction</span>(<span class="at">predictions =</span> pred_prob<span class="sc">$</span>Hepatitis, <span class="at">labels =</span> testing.df<span class="sc">$</span>Diagnosis)</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>  perf_roc <span class="ot">&lt;-</span> <span class="fu">performance</span>(pred_roc, <span class="at">measure =</span> <span class="st">"tpr"</span>, <span class="at">x.measure =</span> <span class="st">"fpr"</span>)</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(<span class="fu">list</span>(perf_roc, pred_roc))</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 <section id="roc-curve" class="level3">
 <h3 class="anchored" data-anchor-id="roc-curve">ROC curve</h3>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/roc.rf_2849c7810f4f9861626adcd3c59f6326">
+<p>RF’s performance on the testing data set</p>
+<div class="cell" data-hash="hepatitis_notebook_cache/html/roc.rf_df8d5dcd3674497fdf3a3202a9de42d7">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># calculate ROC</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>perf_pred <span class="ot">&lt;-</span> <span class="fu">get_roc</span>(fit_rf, df_test)</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>perf_rf <span class="ot">&lt;-</span> perf_pred[[<span class="dv">1</span>]]</span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>pred_rf <span class="ot">&lt;-</span> perf_pred[[<span class="dv">2</span>]]</span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a><span class="co"># take AUC </span></span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>auc_rf <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">unlist</span>(<span class="fu">slot</span>(<span class="fu">performance</span>(pred_rf, <span class="at">measure =</span> <span class="st">"auc"</span>), <span class="st">"y.values"</span>)), <span class="dv">3</span>)</span>
-<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a><span class="co"># plot</span></span>
-<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(perf_rf, <span class="at">main =</span> <span class="st">"RF ROC curve"</span>, <span class="at">col =</span> <span class="st">"steelblue"</span>, <span class="at">lwd =</span> <span class="dv">3</span>)</span>
-<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">a =</span> <span class="dv">0</span>, <span class="at">b =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">3</span>, <span class="at">lty =</span> <span class="dv">2</span>, <span class="at">col =</span> <span class="dv">1</span>)</span>
-<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.7</span>, <span class="at">y =</span> <span class="fl">0.3</span>, <span class="at">legend =</span> <span class="fu">paste0</span>(<span class="st">"AUC = "</span>, auc_rf))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># calculate ROC</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>perf_pred <span class="ot">&lt;-</span> <span class="fu">get_roc</span>(fit_rf, df_test)</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>perf_rf <span class="ot">&lt;-</span> perf_pred[[<span class="dv">1</span>]]</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>pred_rf <span class="ot">&lt;-</span> perf_pred[[<span class="dv">2</span>]]</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a><span class="co"># take AUC </span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>auc_rf <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">unlist</span>(<span class="fu">slot</span>(<span class="fu">performance</span>(pred_rf, <span class="at">measure =</span> <span class="st">"auc"</span>), <span class="st">"y.values"</span>)), <span class="dv">3</span>)</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a><span class="co"># plot</span></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(perf_rf, <span class="at">main =</span> <span class="st">"RF ROC curve"</span>, <span class="at">col =</span> <span class="st">"steelblue"</span>, <span class="at">lwd =</span> <span class="dv">3</span>)</span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">a =</span> <span class="dv">0</span>, <span class="at">b =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">3</span>, <span class="at">lty =</span> <span class="dv">2</span>, <span class="at">col =</span> <span class="dv">1</span>)</span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.7</span>, <span class="at">y =</span> <span class="fl">0.3</span>, <span class="at">legend =</span> <span class="fu">paste0</span>(<span class="st">"AUC = "</span>, auc_rf))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/roc.rf-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
+<p>AUC is pretty close to 1.0, True Positive Rate close to 1.0 while False Positive Rate is low</p>
 </section>
 <section id="tpr-v-fpr" class="level3">
 <h3 class="anchored" data-anchor-id="tpr-v-fpr">TPR v FPR</h3>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/tpr.rf_e5c5cce81e39d091d7b47110e7dbdb72">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/tpr.rf_71b0dd9596abacf8690a8d0b05a258e6">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># choose your cut-off</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>cutoff <span class="ot">&lt;-</span> <span class="fl">0.10</span></span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a><span class="co"># use pred_rf (pred_roc) object</span></span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_rf, <span class="at">measure =</span> <span class="st">"tpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>),</span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>     <span class="at">col=</span><span class="st">"steelblue"</span>, </span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylab =</span> <span class="st">"Rate"</span>, </span>
-<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab=</span><span class="st">"Probability cutoff"</span>)</span>
-<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_rf, <span class="at">measure =</span> <span class="st">"fpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>), </span>
-<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>     <span class="at">add =</span> T, <span class="at">col =</span> <span class="st">"red"</span>)</span>
-<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.6</span>,<span class="at">y =</span> <span class="fl">0.7</span>, <span class="fu">c</span>(<span class="st">"TPR (Recall)"</span>, <span class="st">"FPR (1-Spec)"</span>), </span>
-<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a>       <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">col =</span><span class="fu">c</span>(<span class="st">'steelblue'</span>, <span class="st">'red'</span>), <span class="at">bty =</span> <span class="st">'n'</span>, <span class="at">cex =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">2</span>)</span>
-<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">v =</span> cutoff, <span class="at">lwd =</span> <span class="dv">2</span>, <span class="at">lty=</span><span class="dv">6</span>)</span>
-<span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-18"><a href="#cb27-18" aria-hidden="true" tabindex="-1"></a><span class="fu">title</span>(<span class="st">"RF"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># choose your cut-off</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>cutoff <span class="ot">&lt;-</span> <span class="fl">0.08</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="co"># use pred_rf (pred_roc) object</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_rf, <span class="at">measure =</span> <span class="st">"tpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>),</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>     <span class="at">col=</span><span class="st">"steelblue"</span>, </span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylab =</span> <span class="st">"Rate"</span>, </span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab=</span><span class="st">"Probability cutoff"</span>)</span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_rf, <span class="at">measure =</span> <span class="st">"fpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>), </span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>     <span class="at">add =</span> T, <span class="at">col =</span> <span class="st">"red"</span>)</span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.6</span>,<span class="at">y =</span> <span class="fl">0.7</span>, <span class="fu">c</span>(<span class="st">"TPR (Recall)"</span>, <span class="st">"FPR (1-Spec)"</span>), </span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>       <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">col =</span><span class="fu">c</span>(<span class="st">'steelblue'</span>, <span class="st">'red'</span>), <span class="at">bty =</span> <span class="st">'n'</span>, <span class="at">cex =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">2</span>)</span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a><span class="co">#abline(v = cutoff, lwd = 2, lty=6)</span></span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a><span class="fu">title</span>(<span class="st">"RF"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/tpr.rf-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
+<p>Unfortunately TPR falls quickly even at low probability cutoff, which means it’s hard to ‘catch’ all cases with hepatitis without ‘catching’ any false positive predictions.</p>
+<p>Let’s have a look at the confusion matrix.</p>
 </section>
 <section id="confusion-matrix" class="level3">
 <h3 class="anchored" data-anchor-id="confusion-matrix">Confusion matrix</h3>
 <p>With selected cutoff</p>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-18_dfc9e5842a05eecbd6f838a5802efe63">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/cm.rf_f4cb1e566100245c93f34baae2f9e70e">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>pred_prob_rf <span class="ot">&lt;-</span> <span class="fu">predict</span>(fit_rf, <span class="at">newdata =</span> df_test, <span class="at">type =</span> <span class="st">"prob"</span>)</span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="co"># turn probabilities into classes</span></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>pred_class_rf <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(pred_prob_rf<span class="sc">$</span>Hepatitis <span class="sc">&gt;</span> cutoff, <span class="st">"Hepatitis"</span>, <span class="st">"Donor"</span>)</span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>pred_class_rf <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(pred_class_rf)</span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>cm_rf <span class="ot">&lt;-</span> <span class="fu">confusionMatrix</span>(<span class="at">data =</span> pred_class_rf, </span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>                <span class="at">reference =</span> df_test<span class="sc">$</span>Diagnosis,</span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>                <span class="at">mode =</span> <span class="st">"everything"</span>,</span>
-<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>                <span class="at">positive =</span> <span class="st">"Hepatitis"</span>)</span>
-<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>cm_rf</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>pred_prob_rf <span class="ot">&lt;-</span> <span class="fu">predict</span>(fit_rf, <span class="at">newdata =</span> df_test, <span class="at">type =</span> <span class="st">"prob"</span>)</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="co"># turn probabilities into classes</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>pred_class_rf <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(pred_prob_rf<span class="sc">$</span>Hepatitis <span class="sc">&gt;</span> cutoff, <span class="st">"Hepatitis"</span>, <span class="st">"Donor"</span>)</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>pred_class_rf <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(pred_class_rf)</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>cm_rf <span class="ot">&lt;-</span> <span class="fu">confusionMatrix</span>(<span class="at">data =</span> pred_class_rf, </span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>                <span class="at">reference =</span> df_test<span class="sc">$</span>Diagnosis,</span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>                <span class="at">mode =</span> <span class="st">"everything"</span>,</span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>                <span class="at">positive =</span> <span class="st">"Hepatitis"</span>)</span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>cm_rf</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Confusion Matrix and Statistics
 
            Reference
 Prediction  Donor Hepatitis
-  Donor       115         1
-  Hepatitis    18        19
+  Donor       101         0
+  Hepatitis    34        18
                                           
-               Accuracy : 0.8758          
-                 95% CI : (0.8129, 0.9236)
-    No Information Rate : 0.8693          
-    P-Value [Acc &gt; NIR] : 0.4639649       
+               Accuracy : 0.7778          
+                 95% CI : (0.7036, 0.8409)
+    No Information Rate : 0.8824          
+    P-Value [Acc &gt; NIR] : 0.9999          
                                           
-                  Kappa : 0.5985          
+                  Kappa : 0.4114          
                                           
- Mcnemar's Test P-Value : 0.0002419       
+ Mcnemar's Test P-Value : 1.519e-08       
                                           
-            Sensitivity : 0.9500          
-            Specificity : 0.8647          
-         Pos Pred Value : 0.5135          
-         Neg Pred Value : 0.9914          
-              Precision : 0.5135          
-                 Recall : 0.9500          
-                     F1 : 0.6667          
-             Prevalence : 0.1307          
-         Detection Rate : 0.1242          
-   Detection Prevalence : 0.2418          
-      Balanced Accuracy : 0.9073          
+            Sensitivity : 1.0000          
+            Specificity : 0.7481          
+         Pos Pred Value : 0.3462          
+         Neg Pred Value : 1.0000          
+              Precision : 0.3462          
+                 Recall : 1.0000          
+                     F1 : 0.5143          
+             Prevalence : 0.1176          
+         Detection Rate : 0.1176          
+   Detection Prevalence : 0.3399          
+      Balanced Accuracy : 0.8741          
                                           
        'Positive' Class : Hepatitis       
                                           </code></pre>
 </div>
 </div>
+<p>We see. that almost all hepatitis cases have been predicted but we still have a lot of false positives which makes PPV quite low ~0.5</p>
+<p>In other words, if our model predicts a patient to have hepatitis, there is ~50% chance that the patient doesn’t have it.</p>
+<p>Also, the model should be able to capture <strong>all</strong> cases with the disease - that’s what is required in clinical practice, i.e Sensitivity/Recall should be 1.0</p>
+<p>To overcome these two problems, a better algorithm should be used or the current one should be tuned better.</p>
 </section>
 </section>
 </section>
@@ -1561,25 +1027,25 @@ Prediction  Donor Hepatitis
 <div class="cell" data-hash="hepatitis_notebook_cache/html/xgb.train_e7ec92eb6ef7486614ad7cfe52e8761d">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">121</span>)</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="co"># basic grid search</span></span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>fit_xgb <span class="ot">&lt;-</span> <span class="fu">train</span>(Diagnosis <span class="sc">~</span> ., </span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">data =</span> df_train_smote, </span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">method =</span> <span class="st">"xgbTree"</span>,</span>
-<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>                 <span class="at">metric =</span> <span class="st">"ROC"</span>, </span>
-<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>                 <span class="at">trControl =</span> fit_ctrl,</span>
-<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>                 <span class="at">tuneLength =</span> <span class="dv">5</span>,</span>
-<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>                 <span class="at">nthreads =</span> <span class="dv">12</span>,</span>
-<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbose =</span> <span class="cn">FALSE</span>,</span>
-<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbosity =</span> <span class="dv">0</span>)</span>
-<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>fit_xgb<span class="sc">$</span>bestTune</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">121</span>)</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="co"># basic grid search</span></span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>fit_xgb <span class="ot">&lt;-</span> <span class="fu">train</span>(Diagnosis <span class="sc">~</span> ., </span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">data =</span> df_train_smote, </span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">method =</span> <span class="st">"xgbTree"</span>,</span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>                 <span class="at">metric =</span> <span class="st">"ROC"</span>, </span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>                 <span class="at">trControl =</span> fit_ctrl,</span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>                 <span class="at">tuneLength =</span> <span class="dv">5</span>,</span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>                 <span class="at">nthreads =</span> <span class="dv">12</span>,</span>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbose =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>                 <span class="at">verbosity =</span> <span class="dv">0</span>)</span>
+<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>fit_xgb<span class="sc">$</span>bestTune</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["nrounds"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["max_depth"],"name":[2],"type":["int"],"align":["right"]},{"label":["eta"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["gamma"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["colsample_bytree"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["min_child_weight"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["subsample"],"name":[7],"type":["dbl"],"align":["right"]}],"data":[{"1":"50","2":"4","3":"0.4","4":"0","5":"0.6","6":"1","7":"0.5","_rn_":"401"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["nrounds"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["max_depth"],"name":[2],"type":["int"],"align":["right"]},{"label":["eta"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["gamma"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["colsample_bytree"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["min_child_weight"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["subsample"],"name":[7],"type":["dbl"],"align":["right"]}],"data":[{"1":"50","2":"5","3":"0.4","4":"0","5":"0.6","6":"1","7":"0.75","_rn_":"461"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 </div>
@@ -1592,18 +1058,18 @@ Prediction  Donor Hepatitis
 <div class="cell" data-hash="hepatitis_notebook_cache/html/roc.xgb_a3359a53c2d37e59810f16eebe3a2668">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="co"># calculate ROC</span></span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>perf_pred <span class="ot">&lt;-</span> <span class="fu">get_roc</span>(fit_xgb, df_test)</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>perf_xgb <span class="ot">&lt;-</span> perf_pred[[<span class="dv">1</span>]]</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>pred_xgb <span class="ot">&lt;-</span> perf_pred[[<span class="dv">2</span>]]</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a><span class="co"># take AUC </span></span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>auc_xgb <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">unlist</span>(<span class="fu">slot</span>(<span class="fu">performance</span>(pred_xgb, <span class="at">measure =</span> <span class="st">"auc"</span>), <span class="st">"y.values"</span>)), <span class="dv">3</span>)</span>
-<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a><span class="co"># plot</span></span>
-<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(perf_xgb, <span class="at">main =</span> <span class="st">"XGB ROC curve"</span>, <span class="at">col =</span> <span class="st">"steelblue"</span>, <span class="at">lwd =</span> <span class="dv">3</span>)</span>
-<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">a =</span> <span class="dv">0</span>, <span class="at">b =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">3</span>, <span class="at">lty =</span> <span class="dv">2</span>, <span class="at">col =</span> <span class="dv">1</span>)</span>
-<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.7</span>, <span class="at">y =</span> <span class="fl">0.3</span>, <span class="at">legend =</span> <span class="fu">paste0</span>(<span class="st">"AUC = "</span>, auc_xgb))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="co"># calculate ROC</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>perf_pred <span class="ot">&lt;-</span> <span class="fu">get_roc</span>(fit_xgb, df_test)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>perf_xgb <span class="ot">&lt;-</span> perf_pred[[<span class="dv">1</span>]]</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>pred_xgb <span class="ot">&lt;-</span> perf_pred[[<span class="dv">2</span>]]</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a><span class="co"># take AUC </span></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>auc_xgb <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">unlist</span>(<span class="fu">slot</span>(<span class="fu">performance</span>(pred_xgb, <span class="at">measure =</span> <span class="st">"auc"</span>), <span class="st">"y.values"</span>)), <span class="dv">3</span>)</span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a><span class="co"># plot</span></span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(perf_xgb, <span class="at">main =</span> <span class="st">"XGB ROC curve"</span>, <span class="at">col =</span> <span class="st">"steelblue"</span>, <span class="at">lwd =</span> <span class="dv">3</span>)</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">a =</span> <span class="dv">0</span>, <span class="at">b =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">3</span>, <span class="at">lty =</span> <span class="dv">2</span>, <span class="at">col =</span> <span class="dv">1</span>)</span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.7</span>, <span class="at">y =</span> <span class="fl">0.3</span>, <span class="at">legend =</span> <span class="fu">paste0</span>(<span class="st">"AUC = "</span>, auc_xgb))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/roc.xgb-1.png" class="img-fluid" width="672"></p>
@@ -1615,23 +1081,23 @@ Prediction  Donor Hepatitis
 <div class="cell" data-hash="hepatitis_notebook_cache/html/tpr.xgb_979579b1555e35a9d832998e79498c66">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>cutoff <span class="ot">&lt;-</span> <span class="fl">0.12</span></span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="co"># use pred_rf (pred_roc) object</span></span>
-<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_xgb, <span class="at">measure =</span> <span class="st">"tpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>),</span>
-<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>     <span class="at">col=</span><span class="st">"steelblue"</span>, </span>
-<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylab =</span> <span class="st">"Rate"</span>, </span>
-<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab=</span><span class="st">"Probability cutoff"</span>)</span>
-<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_xgb, <span class="at">measure =</span> <span class="st">"fpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>), </span>
-<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>     <span class="at">add =</span> T, <span class="at">col =</span> <span class="st">"red"</span>)</span>
-<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.6</span>,<span class="at">y =</span> <span class="fl">0.7</span>, <span class="fu">c</span>(<span class="st">"TPR (Recall)"</span>, <span class="st">"FPR (1-Spec)"</span>), </span>
-<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">col =</span><span class="fu">c</span>(<span class="st">'steelblue'</span>, <span class="st">'red'</span>), <span class="at">bty =</span> <span class="st">'n'</span>, <span class="at">cex =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">2</span>)</span>
-<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-15"><a href="#cb32-15" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">v =</span> cutoff, <span class="at">lwd =</span> <span class="dv">2</span>, <span class="at">lty=</span><span class="dv">6</span>)</span>
-<span id="cb32-16"><a href="#cb32-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-17"><a href="#cb32-17" aria-hidden="true" tabindex="-1"></a><span class="fu">title</span>(<span class="st">"XGB"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>cutoff <span class="ot">&lt;-</span> <span class="fl">0.12</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="co"># use pred_rf (pred_roc) object</span></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_xgb, <span class="at">measure =</span> <span class="st">"tpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>),</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>     <span class="at">col=</span><span class="st">"steelblue"</span>, </span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylab =</span> <span class="st">"Rate"</span>, </span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab=</span><span class="st">"Probability cutoff"</span>)</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">performance</span>(pred_xgb, <span class="at">measure =</span> <span class="st">"fpr"</span>, <span class="at">x.measure =</span> <span class="st">"cutoff"</span>), </span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>     <span class="at">add =</span> T, <span class="at">col =</span> <span class="st">"red"</span>)</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="fl">0.6</span>,<span class="at">y =</span> <span class="fl">0.7</span>, <span class="fu">c</span>(<span class="st">"TPR (Recall)"</span>, <span class="st">"FPR (1-Spec)"</span>), </span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">col =</span><span class="fu">c</span>(<span class="st">'steelblue'</span>, <span class="st">'red'</span>), <span class="at">bty =</span> <span class="st">'n'</span>, <span class="at">cex =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">2</span>)</span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">v =</span> cutoff, <span class="at">lwd =</span> <span class="dv">2</span>, <span class="at">lty=</span><span class="dv">6</span>)</span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a><span class="fu">title</span>(<span class="st">"XGB"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <p><img src="hepatitis_notebook_files/figure-html/tpr.xgb-1.png" class="img-fluid" width="672"></p>
@@ -1640,51 +1106,51 @@ Prediction  Donor Hepatitis
 </section>
 <section id="confusion-matrix-with-selected-cutoff" class="level3">
 <h3 class="anchored" data-anchor-id="confusion-matrix-with-selected-cutoff">Confusion matrix with selected cutoff</h3>
-<div class="cell" data-hash="hepatitis_notebook_cache/html/unnamed-chunk-19_7e6cb59ab9e75e896612314767713711">
+<div class="cell" data-hash="hepatitis_notebook_cache/html/cm.xgb_f1a242abeef2854530b8b64551ccfae8">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>pred_prob_xgb <span class="ot">&lt;-</span> <span class="fu">predict</span>(fit_xgb, <span class="at">newdata =</span> df_test, <span class="at">type =</span> <span class="st">"prob"</span>)</span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="co"># turn probabilities into classes</span></span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>pred_class_xgb <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(pred_prob_xgb<span class="sc">$</span>Hepatitis <span class="sc">&gt;</span> cutoff, <span class="st">"Hepatitis"</span>, <span class="st">"Donor"</span>)</span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>pred_class_xgb <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(pred_class_xgb)</span>
-<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>cm_xgb <span class="ot">&lt;-</span> <span class="fu">confusionMatrix</span>(<span class="at">data =</span> pred_class_xgb, </span>
-<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>                <span class="at">reference =</span> df_test<span class="sc">$</span>Diagnosis,</span>
-<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>                <span class="at">mode =</span> <span class="st">"everything"</span>,</span>
-<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>                <span class="at">positive =</span> <span class="st">"Hepatitis"</span>)</span>
-<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>cm_xgb</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>pred_prob_xgb <span class="ot">&lt;-</span> <span class="fu">predict</span>(fit_xgb, <span class="at">newdata =</span> df_test, <span class="at">type =</span> <span class="st">"prob"</span>)</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="co"># turn probabilities into classes</span></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>pred_class_xgb <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(pred_prob_xgb<span class="sc">$</span>Hepatitis <span class="sc">&gt;</span> cutoff, <span class="st">"Hepatitis"</span>, <span class="st">"Donor"</span>)</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>pred_class_xgb <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(pred_class_xgb)</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>cm_xgb <span class="ot">&lt;-</span> <span class="fu">confusionMatrix</span>(<span class="at">data =</span> pred_class_xgb, </span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a>                <span class="at">reference =</span> df_test<span class="sc">$</span>Diagnosis,</span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>                <span class="at">mode =</span> <span class="st">"everything"</span>,</span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>                <span class="at">positive =</span> <span class="st">"Hepatitis"</span>)</span>
+<span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a>cm_xgb</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Confusion Matrix and Statistics
 
            Reference
 Prediction  Donor Hepatitis
-  Donor       130         2
-  Hepatitis     3        18
+  Donor       129         0
+  Hepatitis     6        18
                                           
-               Accuracy : 0.9673          
-                 95% CI : (0.9254, 0.9893)
-    No Information Rate : 0.8693          
-    P-Value [Acc &gt; NIR] : 3.135e-05       
+               Accuracy : 0.9608          
+                 95% CI : (0.9166, 0.9855)
+    No Information Rate : 0.8824          
+    P-Value [Acc &gt; NIR] : 0.0006113       
                                           
-                  Kappa : 0.8592          
+                  Kappa : 0.835           
                                           
- Mcnemar's Test P-Value : 1               
+ Mcnemar's Test P-Value : 0.0412268       
                                           
-            Sensitivity : 0.9000          
-            Specificity : 0.9774          
-         Pos Pred Value : 0.8571          
-         Neg Pred Value : 0.9848          
-              Precision : 0.8571          
-                 Recall : 0.9000          
-                     F1 : 0.8780          
-             Prevalence : 0.1307          
+            Sensitivity : 1.0000          
+            Specificity : 0.9556          
+         Pos Pred Value : 0.7500          
+         Neg Pred Value : 1.0000          
+              Precision : 0.7500          
+                 Recall : 1.0000          
+                     F1 : 0.8571          
+             Prevalence : 0.1176          
          Detection Rate : 0.1176          
-   Detection Prevalence : 0.1373          
-      Balanced Accuracy : 0.9387          
+   Detection Prevalence : 0.1569          
+      Balanced Accuracy : 0.9778          
                                           
        'Positive' Class : Hepatitis       
                                           </code></pre>
