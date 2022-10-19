@@ -26,7 +26,6 @@ library(caret)
 library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
 library(ROCR)
 
-THREADS <- 16
 ```
 
 # The data
@@ -460,25 +459,27 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ## Training and validation
 
 ```{r train.rf}
-set.seed(122)
+set.seed(121)
 
-#library(doParallel)
+THREADS <- 6
 
-#cl <- makePSOCKcluster(THREADS)
-#registerDoParallel(cl)
+library(doParallel)
+
+cl <- makePSOCKcluster(THREADS)
+registerDoParallel(cl)
 
 fit_rf <- train(stroke ~ ., 
                  data = df_train_smote, 
                  metric = "ROC", 
                  method = "rf", 
                  trControl = fit_ctrl_roc,
-                 tuneGrid = expand.grid(.mtry = seq(2, 19, 1)),
+                 tuneGrid = expand.grid(.mtry = c(7.5, 8.5, 9.0, 9.5)),
                  verbosity = 0,
-                 ntree = 10,
+                 ntree = 25,
                  nodesize = 1,
                  verbose = FALSE)
 
-#stopCluster(cl)
+stopCluster(cl)
 
 fit_rf
 
@@ -565,7 +566,7 @@ According to the TPR/FPR plot (above) the optimal cutoff is.
 pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.11
+cutoff = 0.01
 
 # turn probabilities into classes
 pred_class_rf <- ifelse(pred_prob_rf$yes > cutoff, "yes", "no")
@@ -587,8 +588,17 @@ xgbTree has 7 parameters
 
 ## Training and validation
 
-```{r train.xgb, eval=T}
+```{r train.xgb, eval=F}
 set.seed(121)
+
+# the best tune achieved by using tuneLength=4 is as the following:
+# n_rounds = 50
+# max_depth = 4
+# eta = 0.3
+# gamma = 0
+# colsample_bytree = 0.6
+# min_child_weight = 1
+# subsample = 1
 
 fit_xgb <- train(stroke ~ ., 
                  data = df_train_smote, 
@@ -606,7 +616,7 @@ fit_xgb$bestTune
 
 ## Features importance
 
-```{r featimp.xgb, eval=T}
+```{r featimp.xgb, eval=F}
 imp_vars_xgb <- varImp(fit_xgb)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -617,7 +627,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ### ROC curve
 
-```{r roc.xgb, eval=T}
+```{r roc.xgb, eval=F}
 # calculate ROC
 perf_pred_xgb <- get_roc(fit_xgb, df_test)
 perf_xgb <- perf_pred_xgb[[1]]
@@ -636,7 +646,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ### TPR v FPR
 
-```{r tpr.xgb, eval=T}
+```{r tpr.xgb, eval=F}
 # use pred_xgb object
 plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -656,7 +666,7 @@ title("xgbTree")
 
 ### Confusion matrix
 
-```{r cm.xgb, eval=T}
+```{r cm.xgb, eval=F}
 pred_prob_xgb <- predict(fit_xgb, newdata=df_test, type = "prob")
 
 # choose your cut-off
