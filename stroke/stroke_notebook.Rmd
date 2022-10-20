@@ -22,6 +22,7 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(tidyverse)
 library(caret)
+library(skimr)
 #library(GGally)
 library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
 library(ROCR)
@@ -36,17 +37,21 @@ Also, it can be ordered: never < formerly < smokes
 
 `ever_married` can be recoded as 0/1 in accordance with `heart_disease` and `hypertension`
 
-Other predictors seem to be OK
+`id` can be removed
+
+Other columns seem to be OK
 
 ```{r read}
 df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddcf", na = c("Unknown", "N/A"))
 
 # if you set smoking_status to factor in col_types, na() won't work
 df$smoking_status <- as_factor(df$smoking_status)
-df$smoking_status <- fct_relevel(df$smoking_status, c("never smoked", "formerly smoked", "smokes"))
 
 # married
 df$ever_married <- factor(if_else(df$ever_married == "Yes", 1, 0))
+
+# ID
+df$id <- NULL
 
 # for models working properly
 df$stroke <- factor(ifelse(df$stroke == 1, "yes", "no"), levels = c("no", "yes"))
@@ -56,32 +61,16 @@ df
 
 ## Descriptive statistics
 
-Skip id column
-
 ```{r describe}
-df$id <- NULL
-skimr::skim(df)
+skim_desc <- skim(df)
+
+skim_desc %>%
+  yank("factor")
 ```
 
 Target 'stroke' is imbalanced!
 
 'smoking_status' completeness rate 0.7
-
-## How many smoking_status in each target class?
-
-```{r}
-df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
-```
-
-
-BMI's complete rate 0.96
-
-## How many skipped BMI in each target class?
-
-```{r}
-df %>% filter(is.na(bmi)) %>% group_by(stroke) %>% summarise(N=n())
-```
-
 
 One 'Other' gender to be removed
 
@@ -89,6 +78,26 @@ One 'Other' gender to be removed
 df <- df %>% filter(gender != "Other")
 ```
 
+
+```{r}
+skim_desc %>%
+  yank("numeric")
+```
+
+BMI's complete rate 0.96
+
+### How many smoking_status in each target class?
+
+```{r}
+df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
+```
+
+
+### How many skipped BMI in each target class?
+
+```{r}
+df %>% filter(is.na(bmi)) %>% group_by(stroke) %>% summarise(n.bmi=n())
+```
 
 ## EDA
 
@@ -326,18 +335,47 @@ Remove bmi > 60
 ```{r, cache=F}
 df_trim <- df %>% filter(bmi <= 60 )
 
-skimr::skim(df_trim)
+skim(df_trim) %>% yank("factor")
 ```
 
-BMI is complete, in total approx. 2000 observations are gone
+
+```{r}
+skim(df_trim) %>% yank("numeric")
+```
+
+BMI is now complete, in total approx. 2000 observations are gone
 
 ## Imputation
 
-Using package [mice](https://www.rdocumentation.org/packages/mice/versions/3.14.0/topics/mice)
+### Manual
 
-It uses `polr` - proportional odds model - for `smoking_status` and `pmm` - predictive mean matching - for `bmi`
+I will replace all NAs in Children (`work_type`) by 'never smoked'.
 
-### Run imputation
+```{r}
+df_trim$smoking_status <- ifelse((df_trim$work_type == "children" & is.na(df_trim$smoking_status)), 
+                            "never smoked", as.character(df_trim$smoking_status))
+
+df_trim$smoking_status <- as.factor(df_trim$smoking_status)
+df_trim$smoking_status <- fct_relevel(df_trim$smoking_status, c("never smoked", "formerly smoked", "smokes"))
+
+df_trim %>% filter(work_type == "children") %>% 
+  group_by(smoking_status) %>% 
+  summarise(N = n(), 
+            avg.age = mean(age), 
+            max.age = max(age), 
+            min.age = min(age))
+```
+
+No NAs in children's smoking status anymore.
+
+### Model-based imputation
+
+The rest will be imputed using package [mice](https://www.rdocumentation.org/packages/mice/versions/3.14.0/topics/mice) and two models:
+
+1. Proportional odds model (`polr`) for `smoking_status`
+
+2. Predictive mean matching (`pmm`) for `bmi` (if no trimming were made)
+
 
 ```{r, eval = T, message=FALSE, cache=F}
 library(mice)
@@ -355,7 +393,9 @@ Number of NAs in Smoking: `r sum(is.na(df_imp$smoking_status))`
 
 #### BMI
 
-```{r bmi.imp.plot}
+There was no BMI imputation after trimming BMI > 60
+
+```{r bmi.imp.plot, eval=F}
 bmi_imp_comp <- bind_rows(select(df_trim, bmi, stroke) %>% mutate(type = rep("original", nrow(df_trim))),
           select(df_imp, bmi, stroke) %>% mutate(type = rep("imputed", nrow(df_imp))))
 
@@ -386,7 +426,7 @@ Counts increased proportionally in all *Smoking* groups
 
 Scale numeric features (including imputed BMI)
 
-```{r scale, cache=F}
+```{r scale}
 # use caret::preProcess()
 # preProcValues <- preProcess(training, method = c("center", "scale"))
 
@@ -402,7 +442,7 @@ df_scaled <- df_imp %>%
 
 I've decided to omit smoking_status completely - it won't be *dummified*
 
-```{r dummy, cache=F}
+```{r dummy}
 # select vars
 to_dum <- df_imp %>% select(gender, work_type, Residence_type, smoking_status)
 # make an obj
@@ -459,14 +499,14 @@ df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ## Training and validation
 
 ```{r train.rf}
-set.seed(121)
+set.seed(122)
 
-THREADS <- 6
+#THREADS <- 6
 
-library(doParallel)
+#library(doParallel)
 
-cl <- makePSOCKcluster(THREADS)
-registerDoParallel(cl)
+#cl <- makePSOCKcluster(THREADS)
+#registerDoParallel(cl)
 
 fit_rf <- train(stroke ~ ., 
                  data = df_train_smote, 
@@ -479,7 +519,7 @@ fit_rf <- train(stroke ~ .,
                  nodesize = 1,
                  verbose = FALSE)
 
-stopCluster(cl)
+#stopCluster(cl)
 
 fit_rf
 
@@ -581,6 +621,7 @@ cm_rf <- confusionMatrix(data = pred_class_rf,
 cm_rf
 ```
 
+PPV is extremely low!
 
 # Extreme Gradient Boosting: xgbTree
 
@@ -588,7 +629,7 @@ xgbTree has 7 parameters
 
 ## Training and validation
 
-```{r train.xgb, eval=F}
+```{r train.xgb, eval=T}
 set.seed(121)
 
 # the best tune achieved by using tuneLength=4 is as the following:
@@ -605,7 +646,13 @@ fit_xgb <- train(stroke ~ .,
                  method = "xgbTree",
                  metric = "ROC", 
                  trControl = fit_ctrl_roc,
-                 tuneLength = 4,
+                 tuneGrid = expand.grid(.nrounds = 50, 
+                             .max_depth = 4,
+                             .eta = 0.25,
+                             .gamma = 0.01,
+                             .colsample_bytree = 0.6,
+                             .min_child_weight = 1,
+                             .subsample = 1),
                  nthreads = 16,
                  verbose = FALSE,
                  verbosity = 0)
@@ -616,7 +663,7 @@ fit_xgb$bestTune
 
 ## Features importance
 
-```{r featimp.xgb, eval=F}
+```{r featimp.xgb, eval=T}
 imp_vars_xgb <- varImp(fit_xgb)
 
 plot(imp_vars_xgb, main = "Variable Importance with XGB")
@@ -627,7 +674,7 @@ plot(imp_vars_xgb, main = "Variable Importance with XGB")
 
 ### ROC curve
 
-```{r roc.xgb, eval=F}
+```{r roc.xgb, eval=T}
 # calculate ROC
 perf_pred_xgb <- get_roc(fit_xgb, df_test)
 perf_xgb <- perf_pred_xgb[[1]]
@@ -638,7 +685,7 @@ pred_xgb <- perf_pred_xgb[[2]]
 auc_xgb <- round(unlist(slot(performance(pred_xgb, measure = "auc"), "y.values")), 3)
 
 # plot
-plot(perf_xgb, main = "XGB ROC curve", col = "steelblue", lwd = 3)
+plot(perf_xgb, main = "xgbTree ROC curve", col = "steelblue", lwd = 3)
 abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
 legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
@@ -646,7 +693,7 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ### TPR v FPR
 
-```{r tpr.xgb, eval=F}
+```{r tpr.xgb, eval=T}
 # use pred_xgb object
 plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
      col = "steelblue", 
@@ -666,11 +713,11 @@ title("xgbTree")
 
 ### Confusion matrix
 
-```{r cm.xgb, eval=F}
+```{r cm.xgb, eval=T}
 pred_prob_xgb <- predict(fit_xgb, newdata=df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.12
+cutoff = 0.025
 
 # turn probabilities into classes
 pred_class_xgb <- ifelse(pred_prob_xgb$yes > cutoff, "yes", "no")
@@ -690,6 +737,7 @@ cm_xgb
 
 ---
 ```{r save, eval=T}
+# save it
 save.image("data/workspace.RData")
 ```
 
