@@ -19,7 +19,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
 library(tidyverse)
 library(caret)
 library(skimr)
@@ -29,17 +29,7 @@ library(ROCR)
 
 ```
 
-# The data
-
-In `smoking_status` Unknown should be changed to NA.
-
-Also, it can be ordered: never < formerly < smokes
-
-`ever_married` can be recoded as 0/1 in accordance with `heart_disease` and `hypertension`
-
-`id` can be removed
-
-Other columns seem to be OK
+# Data set
 
 ```{r read}
 df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddcf", na = c("Unknown", "N/A"))
@@ -59,6 +49,16 @@ df$stroke <- factor(ifelse(df$stroke == 1, "yes", "no"), levels = c("no", "yes")
 df
 ```
 
+In `smoking_status` 'Unknown' should be changed to NA.
+
+Also, it can be ordered: never < formerly < smokes
+
+`ever_married` can be re-coded as 0/1 in accordance with `heart_disease` and `hypertension`
+
+`id` can be removed
+
+Other columns seem to be OK
+
 ## Descriptive statistics
 
 ```{r describe}
@@ -68,42 +68,41 @@ skim_desc %>%
   yank("factor")
 ```
 
-Target 'stroke' is imbalanced!
+- Target 'stroke' is imbalanced!
 
-'smoking_status' completeness rate 0.7
+- 'smoking_status' completeness rate 0.7
 
-One 'Other' gender to be removed
+ - One 'Other' gender to be removed
 
 ```{r filter}
 df <- df %>% filter(gender != "Other")
-```
 
-
-```{r}
 skim_desc %>%
   yank("numeric")
 ```
 
-BMI's complete rate 0.96
+- BMI's complete rate 0.96
 
-### How many smoking_status in each target class?
+### How many `smoking_status` in each target class?
 
 ```{r}
 df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
 ```
 
 
-### How many skipped BMI in each target class?
+### How many skipped BMI values in each target class?
 
 ```{r}
 df %>% filter(is.na(bmi)) %>% group_by(stroke) %>% summarise(n.bmi=n())
 ```
 
-## EDA
+- We have too many NAs in BMI among 'stroke-yes' cases to simply remove them. Some imputation is needed.
 
-### Overview: a pairs plot
+# Exploratory Data Analysis
 
-```{r pairs, fig.width=10, fig.height=10, warning=FALSE, message=FALSE, eval=FALSE}
+## Quick overview
+
+```{r pairs, fig.width=10, fig.height=10, warning=FALSE, message=FALSE}
 GGally::ggpairs(df, aes(color = stroke, alpha = 0.2, dotsize = 0.02), 
         upper = list(continuous = GGally::wrap("cor", size = 2.5)),
         diag = list(continuous = "barDiag")) +
@@ -111,9 +110,9 @@ GGally::ggpairs(df, aes(color = stroke, alpha = 0.2, dotsize = 0.02),
   scale_fill_brewer(palette = "Set1", direction = -1)
 ```
 
-### In details
+## In details
 
-#### Stroke vs Age
+### Stroke vs Age
 
 ```{r}
 ggplot(df, aes(stroke, age)) +
@@ -123,13 +122,15 @@ ggplot(df, aes(stroke, age)) +
   xlab("")
 ```
 
-**OBS!** There are observation with age much below 20 y.o., even close to 0!
+- No surprises here: the older you get the higher the chance of getting stroke.
 
+- There are observation with age much below 20 y.o., even close to 0! 
 These are very young kids or babies - should we even include them in the analysis?
+If yes, the rest will be prediction only for adults. 
 
-If so, it will be prediction for adults. Also, stroke in kids probably has very different causes compared to stroke in adults/old folk.
+- Stroke in kids probably has very different causes compared to stroke in adults/older folk.
 
-#### Stroke vs Age + Gender
+### Stroke vs Age + Gender
 
 ```{r box1}
 ggplot(df, aes(stroke, age)) + 
@@ -139,21 +140,26 @@ ggplot(df, aes(stroke, age)) +
   scale_color_brewer(palette = "Set2", direction = -1)
 ```
 
-#### Stroke vs Glucose
+- No gender imbalance with respect to `age` and `stroke`
+
+### Stroke vs Glucose
 
 ```{r}
 ggplot(df, aes(stroke, avg_glucose_level)) +
   geom_boxplot(aes(fill = stroke), alpha = 0.5, varwidth = T, notch = T) +
   geom_violin(aes(fill = stroke), alpha = 0.5) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
-  xlab("")
+  xlab("") +
+  ylab("avg glucose level")
 ```
+
+- Observations with stroke tend to have higher glucose level
 
 This average glucose level is probably the results of fasting blood sugar test
 
-If I correctly understand this [CDC information](https://www.cdc.gov/diabetes/basics/getting-tested.html#:~:text=Fasting%20Blood%20Sugar%20Test&text=A%20fasting%20blood%20sugar%20level,higher%20indicates%20you%20have%20diabetes.) on diabetes, values greater than 126 is evidence of diabetes.  But 250? Is it realistic?
+If I correctly understand this [CDC information](https://www.cdc.gov/diabetes/basics/getting-tested.html#:~:text=Fasting%20Blood%20Sugar%20Test&text=A%20fasting%20blood%20sugar%20level,higher%20indicates%20you%20have%20diabetes.) on diabetes, values greater than 126 is evidence of diabetes.  But >250? Is it realistic?
 
-#### Stroke vs BMI
+### Stroke vs BMI
 
 ```{r}
 ggplot(df, aes(stroke, bmi)) +
@@ -163,25 +169,24 @@ ggplot(df, aes(stroke, bmi)) +
   xlab("")
 ```
 
-BMI over 40 is the 3rd class of obesity - BMI over 75 should not exist at all.
+- BMI over 40 is the 3rd class of obesity - BMI over 75 should not exist at all, I think.
 
 Let's look at this weird points
 
-#### Age vs BMI vs Glucose
+### Age vs BMI
 
 ```{r}
 facet_names <- c("no" = "no stroke", "yes" = "stroke")
 
 ggplot(df, aes(age, bmi)) +
   geom_point(color = "steelblue", alpha = 0.8, size = 0.5) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
   facet_grid(rows = vars(stroke), labeller = as_labeller(facet_names)) +
   guides()
 ```
 
 Patients with BMI over 75 are also very young. Suspicious.
 
-#### Glucose vs Age + smoking
+### Glucose vs Age + smoking
 
 ```{r}
 ggplot(df, aes(age, avg_glucose_level)) +
@@ -191,11 +196,10 @@ ggplot(df, aes(age, avg_glucose_level)) +
   guides()
 ```
 
-**OBS!** Kids are mainly 'Unknown' smoking status; both target groups are divided into two clusters -- I'm curious why.
-
+- Children are mainly of 'Unknown' smoking status; both target groups are divided into two clusters -- I'm curious why.
 It is not gender, nor heart disease or any other factor we have in the data set.
 
-#### Age vs Smoking
+### Age vs Smoking
 
 ```{r}
 ggplot(df, aes(smoking_status, age)) +
@@ -204,24 +208,26 @@ ggplot(df, aes(smoking_status, age)) +
   xlab("")
 ```
 
-Kids are mainly non-smokers of course. Note the same two outliers of age below 20 in stroke-yes
+- Kids are main non-smokers of course. Note the same two outliers of age below 20 in 'stroke-yes'
 
-#### Glucose vs BMI
-
+### Glucose vs BMI
 
 ```{r}
 ggplot(df, aes(avg_glucose_level, bmi)) +
   geom_point(aes(color = age), alpha = 0.6, size = 1) +
   scale_fill_brewer(palette = "Set1", direction = -1) +
   facet_grid(rows = vars(stroke), labeller = as_labeller(facet_names)) +
-  guides()
+  guides() +
+  xlab("avg glucose level")
 ```
 
-BMI outliers: super high BMI but super low glucose levels? How's that possible?
+- BMI outliers: super high BMI but super low glucose levels? How's that possible?
 
-Can it be a bias introduced by testing protocol misuse? Like instead of measuring glucose *before* eating, in some samples it was done *after* eating?
+- Can it be a bias introduced by testing protocol misuse? Like instead of measuring glucose *before* eating, in some samples it was done *after* eating?
 
-#### Stroke vs Gender
+- Again, all the observations in both target classes form two distinct clusters.
+
+### Stroke vs Gender
 
 ```{r bar1}
 gender <- df %>% group_by(stroke, gender) %>% summarize(N=n())
@@ -232,9 +238,9 @@ ggplot(gender, aes(stroke, N)) +
   ylab("proportion")
 ```
 
-Proportions in both stroke groups are roughly the same
+- No disproportions here
 
-#### Stroke vs Hypertension
+### Stroke vs Hypertension
 
 ```{r bar2}
 hyptens <- df %>% group_by(stroke, hypertension) %>% summarize(N = n())
@@ -245,9 +251,9 @@ ggplot(hyptens, aes(stroke, N)) +
   ylab("proportion")
 ```
 
-Hypertension occurred more often in stroke-yes
+- Hypertension occurred more often in 'stroke-yes'
 
-#### Stroke vs Heart Disease
+### Stroke vs Heart Disease
 
 ```{r}
 heart <- df %>% group_by(stroke, heart_disease) %>% summarize(N=n())
@@ -258,7 +264,9 @@ ggplot(heart, aes(stroke, N)) +
   ylab("proportion")
 ```
 
-#### Stroke vs Ever Married
+- Heart disease occurred more often in 'stroke-yes'
+
+### Stroke vs Ever Married
 
 ```{r}
 married <- df %>% group_by(stroke, ever_married) %>% summarize(N=n())
@@ -269,9 +277,9 @@ ggplot(married, aes(stroke, N)) +
   ylab("proportion")
 ```
 
-Marriage is bad :)
+- Marriage is bad :)
 
-#### Stroke vs Work Type
+### Stroke vs Work Type
 
 ```{r}
 work <- df %>% group_by(stroke, work_type) %>% summarize(N=n())
@@ -282,9 +290,11 @@ ggplot(work, aes(stroke, N)) +
   ylab("proportion")
 ```
 
-It's good to be a child
+- It's good to be a child
 
-#### Stroke vs Residence Type
+- It's bad to be self-employed
+
+### Stroke vs Residence Type
 
 ```{r}
 residence <- df %>% group_by(stroke, Residence_type) %>% summarize(N=n())
@@ -295,7 +305,9 @@ ggplot(residence, aes(stroke, N)) +
   ylab("proportion")
 ```
 
-#### Stroke vs Smoking
+- No disproportions here
+
+### Stroke vs Smoking
 
 ```{r}
 smoking <- df %>% group_by(stroke, smoking_status) %>% summarize(N=n())
@@ -306,9 +318,9 @@ ggplot(smoking, aes(stroke, N)) +
   ylab("proportion")
 ```
 
-#### Kids and Smoking
+- There are more smokers of all types in 'stroke-yes' 
 
-A lot of NAs in `smoking_status` comes from group 'Children' (see `work_type`). I can replace them with 'never smoked'.
+### Kids and Smoking
 
 ```{r}
 df %>% filter(work_type == "children") %>% 
@@ -319,6 +331,7 @@ df %>% filter(work_type == "children") %>%
             min.age = min(age))
 ```
 
+A lot of NAs in `smoking_status` comes from group 'Children' (see `work_type`). I can replace them with 'never smoked' during imputation stage of the analysis.
 
 ### Conclusions
 
@@ -330,20 +343,19 @@ Since, modelling using all predictors and observations has given me very moderat
 
 ## Trimming
 
-Remove bmi > 60
+Remove BMI > 60
 
-```{r, cache=F}
-df_trim <- df %>% filter(bmi <= 60 )
+```{r trim, cache=F}
+df_trim <- df %>% filter(bmi <= 60 | is.na(bmi))
 
 skim(df_trim) %>% yank("factor")
 ```
 
+4 cases with NA in `smoking_status` are gone.
 
 ```{r}
 skim(df_trim) %>% yank("numeric")
 ```
-
-BMI is now complete, in total approx. 2000 observations are gone
 
 ## Imputation
 
@@ -374,7 +386,7 @@ The rest will be imputed using package [mice](https://www.rdocumentation.org/pac
 
 1. Proportional odds model (`polr`) for `smoking_status`
 
-2. Predictive mean matching (`pmm`) for `bmi` (if no trimming were made)
+2. Predictive mean matching (`pmm`) for `bmi`
 
 
 ```{r, eval = T, message=FALSE, cache=F}
@@ -385,11 +397,13 @@ df_imp <- complete(imp_mice)
 
 ```
 
-Number of NAs in BMI: `r sum(is.na(df_imp$bmi))`
+Number of NAs in `bmi`: `r sum(is.na(df_imp$bmi))`
 
-Number of NAs in Smoking: `r sum(is.na(df_imp$smoking_status))`
+Number of NAs in `smoking_status`: `r sum(is.na(df_imp$smoking_status))`
 
 ### Check distributions
+
+I assume that distributions after imputation should not change significantly, i.e. distribution's shape and mean should remain the same.
 
 #### BMI
 
@@ -404,9 +418,9 @@ ggplot(bmi_imp_comp, aes(bmi)) +
   facet_grid(cols = vars(stroke))
 ```
 
-Means have not changed, which is good, I suppose.
+- Means and shape have not changed, which is good
 
-#### Smoking
+#### Smoking status
 
 ```{r}
 smoke_imp_comp <- bind_rows(select(df_trim, smoking_status, stroke) %>% mutate(type = rep("original", nrow(df_trim))),
@@ -419,12 +433,12 @@ ggplot(smoke_imp_comp, aes(smoking_status)) +
   theme(axis.text.x = element_text(angle=45, vjust = 0.5))
 ```
 
-Counts increased proportionally in all *Smoking* groups
+Counts increased proportionally in all `smoking_status` groups
 
 
-## Scaling & Normalization
+## Scaling & Centering
 
-Scale numeric features (including imputed BMI)
+Scale and center all the numeric features (including imputed BMI)
 
 ```{r scale}
 # use caret::preProcess()
@@ -438,38 +452,48 @@ df_scaled <- df_imp %>%
 ```
 
 
-## Make Dummies
+## Making dummy variables
 
-I've decided to omit smoking_status completely - it won't be *dummified*
+Some variables (`hypertension`, `heart_disease`, `ever_married`) already have a *dummy* form.
+
+The rest (`gender`, `work_type`, `Residence_type`, `smoking_status`) has to be *dummified*
 
 ```{r dummy}
 # select vars
 to_dum <- df_imp %>% select(gender, work_type, Residence_type, smoking_status)
+
 # make an obj
 dummies <- dummyVars(~ ., data = to_dum)
+
 # apply it
 df_dummy <- data.frame(predict(dummies, newdata = to_dum))
 
+# look
 head(df_dummy)
 ```
 
-## Join scaled and dummies and the rest
+## Joining processed data
+
+Join the scaled vars, the new dummies and the rest together.
 
 ```{r join}
 df_proc <- bind_cols(df_scaled, df_dummy, select(df_trim, hypertension, heart_disease, ever_married, stroke))
 head(df_proc)
 ```
 
+Now we have 19 variables/features.
+
 # Modelling
 
-## Basic parameters
+## Basic training parameters
 
-ROC-optimization is better when data is imbalanced
+5-fold cross validation repeated 10 times will be used.
+
+ROC-optimization will be used (it is better when data is imbalanced).
 
 ```{r tune1}
 # for ROC
-fit_ctrl_roc <- trainControl(## 5-fold CV
-                           method = "repeatedcv",
+fit_ctrl_roc <- trainControl(method = "repeatedcv",
                            number = 5,
                            repeats = 10, 
                            allowParallel = T,
@@ -479,7 +503,7 @@ fit_ctrl_roc <- trainControl(## 5-fold CV
 
 ## Split data
 
-Imbalanced data - use SMOTE to create training data set, but not testing data set
+The data set is heavily imbalanced, so I will use **S**ynthetic **M**inority **O**versampling **Te**chnique (SMOTE) to create training data set, but not testing one.
 
 ```{r split}
 set.seed(1234)
@@ -493,6 +517,8 @@ df_train_smote <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 1725, perc
 df_train_smote %>% group_by(stroke) %>% summarise(N=n())
 ```
 
+
+Now the data set is balanced.
 
 # Random Forest
 
@@ -538,9 +564,7 @@ plot(imp_vars_rf, main = "Variable Importance with RF")
 
 ## Testing
 
-### ROC & AUC
-
-a function for roc-stuff
+Here's a function to extract data for ROC related plots below.
 
 ```{r roc.fun}
 get_roc <- function(fit.obj, testing.df){
@@ -552,7 +576,7 @@ get_roc <- function(fit.obj, testing.df){
 ```
 
 
-### ROC-curve for ROC-optimized model
+### ROC-curve
 
 ```{r roc.rf}
 # calculate ROC
@@ -570,11 +594,14 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
 
 ```
 
-So, we can adjust TPR/FPR cutoff to predict *all* stroke cases.
+
+Ideally, we should be able to predict all stroke cases (TPR = 1.0). 
+
+TPR/FPR cutoff of the model should be adjusted to 'catch' *all* stroke cases.
 
 ### TPR, FPR vs Probability cutoff
 
-At which probability cut-off, you'll get TPR = 1.0?
+At which probability cutoff, you'll get TPR = 1.0?
 
 ```{r tpr.r}
 # use pred_rf (pred_roc) object
@@ -594,19 +621,20 @@ legend(x = 0.65,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"),
 title("RF")
 ```
 
+TPR curve is falling too quickly, while FPR is not falling quickly enough. 
+
+The ideal cutoff should maximize TPR (i.e. Sensitivity/Recall) and minimize FPR.
+
+In this case the ideal cutoff will be extremely low, invalidating the model.
 
 ### Confusion matrix
-
-Using desired cut-off: we want to maximize TPR (Sensitivity, Recall)!
-
-According to the TPR/FPR plot (above) the optimal cutoff is.
 
 ```{r test.rf}
 # predict probabilities
 pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.01
+cutoff <- 0.01
 
 # turn probabilities into classes
 pred_class_rf <- ifelse(pred_prob_rf$yes > cutoff, "yes", "no")
@@ -621,11 +649,21 @@ cm_rf <- confusionMatrix(data = pred_class_rf,
 cm_rf
 ```
 
-PPV is extremely low!
+Chosen cutoff is `r cutoff`.
+
+With this cutoff we've got very low Accuracy/Kappa, Specificity and PPV.
+
+Extremely low PPV means that if the model predicts a patient to have a stroke, the chance that this patient *really* has a stroke is ~0.09
+
+Is this model useful then? Not much. Although, Specificity and NPV are high, which means that if the model predicts 'no stroke', then with probability 0.99 there is indeed no stroke.
 
 # Extreme Gradient Boosting: xgbTree
 
-xgbTree has 7 parameters
+This *xgbTree* rendition has 7 parameters.
+
+I've done standard hyper-parameters grid search for this model before (with `tuneLength=4`).
+
+In the code below an optimal set of hyper-parameters is chosen.
 
 ## Training and validation
 
@@ -691,6 +729,8 @@ legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
 
 ```
 
+This ROC-curve looks much better than the one from Random Forest. It has a section with TPR=1.0 and FPR < 0.5.
+
 ### TPR v FPR
 
 ```{r tpr.xgb, eval=T}
@@ -711,13 +751,15 @@ legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"),
 title("xgbTree")
 ```
 
+The optimal cutoff here is till very low, with high Sensitivity it will bring low Specificity and PPV.
+
 ### Confusion matrix
 
 ```{r cm.xgb, eval=T}
 pred_prob_xgb <- predict(fit_xgb, newdata=df_test, type = "prob")
 
 # choose your cut-off
-cutoff = 0.025
+cutoff <- 0.025
 
 # turn probabilities into classes
 pred_class_xgb <- ifelse(pred_prob_xgb$yes > cutoff, "yes", "no")
@@ -732,6 +774,11 @@ cm_xgb <- confusionMatrix(data = pred_class_xgb,
 cm_xgb
 ```
 
+Chosen cutoff is `r cutoff`.
+
+This model performs better then the previous one but not well enough - we still have a lot of false positive results.
+
+My guess is that life style is a poor predictor of stroke. In order to get better performing models, we need more data related to physiology, biochemistry or genetics of patients.
 
 # Save the workspace
 
