@@ -1,0 +1,104 @@
+---
+title: "Antibiotic Resistance Prediction In N.gonorrhoeae"
+author: "A.G."
+date-modified: "last update: `r format(Sys.Date(), format = '%d %B %Y')`"
+format: 
+  html:
+    toc: true
+    toc-depth: 2
+    toc-title: Contents
+    toc-location: left
+    df-print: paged
+    standalone: true
+    code-fold: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+library(skimr)
+library(tidyverse)
+library(caret)
+library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
+library(ROCR)
+```
+
+# Metadata
+
+> For this project, we will be working with "unitigs", which are segments of DNA shared by a subset of the strains in our collection. This dataset contains unitigs that are statistically associated with resistance to three different antibiotics.
+
+> There are three unitig files (*_gwas_filtered_unitigs'), corresponding to trimmed versions of the full unitig files. Each contains the unitigs that have the lowest P-values in a genome-wide association study for resistance to a given antibiotic (azm = azithromycin, cfx = cefixime, cip = ciprofloxacin). Each column corresponds to a unitig, or sequence found in samples in the dataset. 1 means the unitig is present in a given sample, 0 means it is absent.
+
+> The metadata file contains the phenotype data we will be trying to predict. For this work, focus on predicting azm_sr, cfx_sr and cip_sr with the corresponding unitig data. sr refers to sensitive and resistant isolates, with 1 corresponding to resistance and 0 corresponding to sensitivity to the antibiotic.
+
+## Metadata
+
+```{r}
+metadata <- read_csv("data/metadata.csv")
+
+metadata
+```
+
+### Descriptive stats
+
+Look at azm_sr, cfx_sr, cip_sr
+
+```{r}
+skim(metadata) %>% yank("numeric")
+```
+
+# Unitigs data: AZM
+
+Since we have unitigs data for three AB, I will open and use them one by one.
+
+```{r}
+unitigs <- read_delim("data/azm_sr_gwas_filtered_unitigs.Rtab")
+
+head(unitigs)
+```
+
+Size of the data frame
+
+```{r}
+dim(unitigs)
+```
+
+Ok, the table should be transposed before any usage in EDA or modelling.
+
+pattern_id (unitigs) are features and should be in columns not in rows.
+
+```{r}
+unitigs <- column_to_rownames(unitigs, var = "pattern_id")
+
+# keep names
+unitigs_features <- rownames(unitigs)
+strains <- colnames(unitigs)
+
+# transpose
+unitigs_t <- data.table::transpose(unitigs)
+
+# set names again
+colnames(unitigs_t) <- unitigs_features
+unitigs_t$Sample_ID <- strains # column name is chosen to be consistent with metadata
+
+head(unitigs_t)
+```
+
+Now I can join resistance labels with transposed unitigs and get the data set for analysis
+
+
+```{r}
+azm_testing <- metadata %>%
+  select(azm_sr, Sample_ID) %>%
+  filter(!is.na(azm_sr))
+
+df <- left_join(azm_testing, unitigs_t, by = "Sample_ID")
+```
+
+---
+
+## Save workspace
+
+```{r}
+save.image("workspace.RData")
+```
+
