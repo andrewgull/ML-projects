@@ -19,7 +19,9 @@ knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(skimr)
 library(tidyverse)
 library(caret)
-library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
+# installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
+# remotes::install_version("DMwR", version="0.4.1")
+library(DMwR) 
 library(ROCR)
 ```
 
