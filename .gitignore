@@ -1,3 +1,5 @@
-stroke/data/workspace.RData
+**/workspace.RData
 .Rproj.user
-hepatitis/archive.zip
+**/**.zip
+**/.Rhistory
+**/**.Rtab
