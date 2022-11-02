@@ -2,4 +2,4 @@ workspace.RData
 .Rproj.user
 **/*.zip
 .Rhistory
-.Rtab
+**/*.Rtab
