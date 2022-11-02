@@ -474,3 +474,12 @@ cm_xgb <- confusionMatrix(data = pred_class_xgb,
 
 cm_xgb
 ```
+
+---
+
+## Save the workspace
+
+```{r}
+save.image("data/workspace.RData")
+```
+
