@@ -64,7 +64,6 @@ skim_desc %>%
   yank("numeric")
 ```
 
-
 # EDA
 
 ## Pairs plot
@@ -305,6 +304,15 @@ fit_rf
 
 ```
 
+## Features Importance
+
+```{r featimp.rf}
+imp_vars_rf <- varImp(fit_rf)
+
+plot(imp_vars_rf, main = "Variable Importance with RF")
+
+```
+
 ## Testing
 
 Here's a function to summarize a model's performance, it is used below.
@@ -320,7 +328,7 @@ get_roc <- function(fit.obj, testing.df){
 
 ### ROC curve
 
-RF's performance on the testing data set 
+RF's performance on the testing data set
 
 ```{r roc.rf}
 # calculate ROC
@@ -387,9 +395,9 @@ cm_rf <- confusionMatrix(data = pred_class_rf,
 cm_rf
 ```
 
-We see. that almost all hepatitis cases have been predicted but we still have a lot of false positives which makes PPV quite low ~0.5
+We see. that almost all hepatitis cases have been predicted but we still have a lot of false positives which makes PPV quite low \~0.5
 
-In other words, if our model predicts a patient to have hepatitis, there is ~50% chance that the patient doesn't have it.
+In other words, if our model predicts a patient to have hepatitis, there is \~50% chance that the patient doesn't have it.
 
 Also, the model should be able to capture **all** cases with the disease - that's what is required in clinical practice, i.e Sensitivity/Recall should be 1.0
 
@@ -413,6 +421,14 @@ fit_xgb <- train(Diagnosis ~ .,
                  verbosity = 0)
 
 fit_xgb$bestTune
+```
+
+## Features importance
+
+```{r featimp.xgb, eval=T}
+imp_vars_xgb <- varImp(fit_xgb)
+
+plot(imp_vars_xgb, main = "Variable Importance with XGB")
 ```
 
 ## Test
@@ -475,11 +491,10 @@ cm_xgb <- confusionMatrix(data = pred_class_xgb,
 cm_xgb
 ```
 
----
+------------------------------------------------------------------------
 
 ## Save the workspace
 
 ```{r}
 save.image("data/workspace.RData")
 ```
-
