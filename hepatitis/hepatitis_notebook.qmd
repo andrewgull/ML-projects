@@ -255,6 +255,12 @@ head(df_scaled)
 ```{r}
 df_proc <- bind_cols(df_scaled, df_dummy)
 df_proc$Diagnosis <- df$Diagnosis
+
+# alternative
+df_scaled$Sex <- df$Sex
+df_proc <- df_scaled
+df_proc$Diagnosis <- df$Diagnosis
+
 head(df_proc) 
 ```
 
