@@ -20,9 +20,11 @@ library(skimr)
 library(tidyverse)
 library(caret)
 # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
+# or 
 # remotes::install_version("DMwR", version="0.4.1")
 library(DMwR) 
 library(ROCR)
+library(tidymodels)
 ```
 
 # Intro
@@ -40,9 +42,12 @@ df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% sele
 
 # make re-coded Category variable
 # there is 0=Blood Donor and 0s=suspect Blood Donor
-df$Diagnosis <- if_else(str_detect(df$Category, "Donor"), "Donor", "Hepatitis")
-df$Diagnosis <- factor(df$Diagnosis, levels = c("Donor", "Hepatitis"))
-df <- df %>% relocate(Diagnosis, .before = Category) %>% select(-Category)
+df <- df %>% 
+  mutate(Diagnosis = if_else(str_detect(Category, "Donor"), "Donor", "Hepatitis")) %>%
+  mutate(Diagnosis = factor(Diagnosis, levels = c("Donor", "Hepatitis"))) %>%
+  relocate(Diagnosis, .before = Category) %>%
+  select(-Category)
+
 head(df)
 ```
 
@@ -51,18 +56,20 @@ head(df)
 ## Factor variables
 
 ```{r}
-skim_desc <- skim(df)
-
-skim_desc %>%
+skim(df) %>%
   yank("factor")
 ```
+
+No missing data here, but the target variable is imbalanced: 75 positive cases vs 540 negative cases
 
 ## Numeric variables
 
 ```{r}
-skim_desc %>%
+skim(df) %>%
   yank("numeric")
 ```
+
+Numeric variables are mostly complete. I will use imputation later to fill in the gaps
 
 # EDA
 
@@ -192,6 +199,8 @@ ggplot(df, aes(Diagnosis, GGT)) +
   xlab("")
 ```
 
+Median of most numerical variables are different between `Donor` and `Hepatitis` groups.
+
 ## Sex v Diagnosis
 
 ```{r}
@@ -203,6 +212,8 @@ ggplot(sex_n, aes(Diagnosis, N)) +
   xlab("") +
   ylab("Proportion")
 ```
+
+Difference in proportion of each sex is not that big between `Donor` and `Hepatitis` groups.
 
 # Data processing
 
@@ -250,35 +261,42 @@ head(df_proc)
 # Split data into training and testing
 
 ```{r data.split}
-set.seed(1234)
-sample_set <- createDataPartition(y = df_proc$Diagnosis, p = .75, list = FALSE)
-df_train <- df_proc[sample_set,]
-df_test <- df_proc[-sample_set,]
+set.seed(124)
+
+data_split <- initial_split(df_proc, prop = 3/4)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
 ```
 
 ## Target class equalization in training data set
 
-```{r smote}
-# DMwR::SMOTE for imbalanced data: over=225 and under=150 give me 1:1 ratio
-df_train_smote <- SMOTE(Diagnosis ~ ., data.frame(df_train), perc.over = 500, perc.under = 190)
+Initial target class counts:
 
-df_train_smote %>% group_by(Diagnosis) %>% summarise(N=n())
+```{r}
+df_train %>%
+  count(Diagnosis)
 ```
+
+To make the target class balanced, I use Synthetic Minority Oversampling Technique (SMOTE) to create training data set, but not testing one. 
+
+Target class now looks like this:
+
+```{r smote}
+df_train_smote <- SMOTE(Diagnosis ~ ., data.frame(df_train), perc.over = 400, perc.under = 160)
+
+df_train_smote %>%
+  count(Diagnosis)
+```
+
+Now the target variable is more balanced.
 
 # Random Forest
 
 ## Training
 
 ```{r rf.train}
-library(doParallel)
-
 set.seed(120)
-
-THREADS <- 8
-
-#cl <- makePSOCKcluster(THREADS)
-#registerDoParallel(cl)
-
 
 fit_ctrl <- trainControl(## 5-fold CV
                            method = "repeatedcv",
@@ -298,7 +316,6 @@ fit_rf <- train(Diagnosis ~ .,
                  nodesize = 1,
                  verbosity = 0,
                  verbose = FALSE)
-#stopCluster(cl)
 
 fit_rf
 
