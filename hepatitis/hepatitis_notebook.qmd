@@ -217,6 +217,75 @@ Difference in proportion of each sex is not that big between `Donor` and `Hepati
 
 # Data processing
 
+## Test use: Specification
+
+Any imputation or oversamplig here?
+
+```{r}
+hep_rec <- recipe(Diagnosis ~ ., data = df_train_smote) %>%
+  step_zv(all_predictors()) # to remove 0 disperse
+# no update_role()
+# no step_dummy()
+```
+
+Model engine
+
+```{r}
+lr_mod <- 
+  logistic_reg() %>% 
+  set_engine("glm")
+```
+
+Model workflow
+
+```{r}
+hep_wflow <- 
+  workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(hep_rec)
+
+hep_wflow
+```
+
+Train the actual model
+
+```{r}
+hep_fit <- 
+  hep_wflow %>% 
+  fit(data = df_train_smote)
+```
+
+Extract the fit object
+
+```{r}
+hep_fit %>% 
+  extract_fit_parsnip() %>% 
+  tidy()
+```
+
+Predict
+
+```{r}
+hep_aug <- 
+  augment(hep_fit, df_test)
+
+hep_aug
+```
+
+get ROC
+
+```{r}
+hep_aug %>% 
+  roc_curve(truth = Diagnosis, .pred_Donor) %>% 
+  autoplot()
+```
+
+```{r}
+hep_aug %>% 
+  roc_auc(truth = Diagnosis, .pred_Donor)
+```
+
+
 ## Imputation
 
 ```{r, warning=FALSE, message=FALSE}
@@ -229,7 +298,11 @@ df_imp <- complete(imp_mice)
 
 ## Dummy vars
 
-```{r}
+`Sex` is the only categorical variable in this data set.
+
+For tree based models it is [not necessary](https://bookdown.org/max/FES/categorical-trees.html) to turn categorical variables (factors) to dummy variables.
+
+```{r, include=FALSE, eval=FALSE}
 to_dum <- df_imp %>% select(Sex)
 # make an obj
 dummies <- dummyVars(~ ., data = to_dum)
@@ -239,29 +312,16 @@ df_dummy <- data.frame(predict(dummies, newdata = to_dum))
 head(df_dummy)
 ```
 
-## Scaling
+## Scaling and centering
 
 ```{r}
-df_scaled <- df_imp %>% 
+df_proc <- df_imp %>% 
   select(-c(Sex, Diagnosis)) %>% 
   scale() %>% 
-  data.frame()
+  data.frame() %>% 
+  mutate(Sex = df$Sex, Diagnosis = df$Diagnosis)
 
-head(df_scaled)
-```
-
-## Join dummies (categorical) and scaled numerical variables
-
-```{r}
-df_proc <- bind_cols(df_scaled, df_dummy)
-df_proc$Diagnosis <- df$Diagnosis
-
-# alternative
-df_scaled$Sex <- df$Sex
-df_proc <- df_scaled
-df_proc$Diagnosis <- df$Diagnosis
-
-head(df_proc) 
+head(df_proc)
 ```
 
 # Split data into training and testing
@@ -299,7 +359,20 @@ Now the target variable is more balanced.
 
 # Random Forest
 
+## Using parsnip
+
+```{r}
+set.seed(56982)
+rf_with_seed %>% 
+  set_args(mtry = 4) %>% 
+  set_engine("randomForest") %>%
+  fit(Diagnosis ~ ., data = df_train_smote)
+```
+
+
 ## Training
+
+5-fold CV repeated 10 times
 
 ```{r rf.train}
 set.seed(120)
