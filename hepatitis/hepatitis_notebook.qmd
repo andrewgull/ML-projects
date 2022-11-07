@@ -18,13 +18,8 @@ editor: visual
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(skimr)
 library(tidyverse)
-library(caret)
-# installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
-# or 
-# remotes::install_version("DMwR", version="0.4.1")
-library(DMwR) 
-library(ROCR)
 library(tidymodels)
+library(themis) # for SMOTE and other recipes for target balancing
 ```
 
 # Intro
@@ -217,16 +212,59 @@ Difference in proportion of each sex is not that big between `Donor` and `Hepati
 
 # Data processing
 
-## Test use: Specification
+## Using recipes
 
-Any imputation or oversamplig here?
+### Split
+
+```{r data.split}
+set.seed(124)
+
+data_split <- initial_split(df, prop = 3/4)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
+```
+
+### Preprocessing
 
 ```{r}
-hep_rec <- recipe(Diagnosis ~ ., data = df_train_smote) %>%
-  step_zv(all_predictors()) # to remove 0 disperse
-# no update_role()
-# no step_dummy()
+my_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
+  step_zv(all_predictors()) %>% # to remove 0 disperse
+  step_center(all_numeric_predictors()) %>% 
+  step_scale(all_numeric_predictors()) %>% 
+  step_impute_median(all_numeric_predictors()) %>% # I use median bcz not that many observations are missing
+  step_dummy(all_nominal_predictors()) %>%
+  step_smote(Diagnosis, over_ratio = 1, seed = 100) %>% # original target distribution 399 v 62
+  check_missing(all_predictors())
+
+my_recipe
 ```
+
+### Prepare and bake the recipe
+
+```{r}
+# prep & bake
+train_data <- my_recipe %>% 
+  prep( training = df_train) %>% 
+  bake(new_data = NULL) # ???
+
+# bake test. what about SMOTE?
+test_data <- my_recipe %>% 
+  prep( training = df_test) %>% 
+  bake(new_data = df_test)
+```
+
+
+### Check
+
+```{r}
+train_data
+```
+
+```{r}
+train_data %>% count(Diagnosis)
+```
+
 
 Model engine
 
