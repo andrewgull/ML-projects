@@ -301,7 +301,7 @@ rf_mod <-
   set_mode("classification")
 
 # join model and processing recipe
-rm_cv_wf <- workflow() %>% 
+rf_cv_wf <- workflow() %>% 
   add_model(rf_mod) %>% 
   add_recipe(my_recipe)
 
@@ -312,7 +312,7 @@ cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 5)
 cls_metrics <- metric_set(roc_auc, j_index)
 
 # tune models, this takes time
-rf_res <- tune_grid(rm_cv_wf,
+rf_res <- tune_grid(rf_cv_wf,
             grid = 25,
             resamples = cv_folds,
             control = control_grid(save_pred = TRUE),
@@ -447,6 +447,8 @@ autoplot(lr_auc)
 
 # Tune and fit Boosted Trees model
 
+Using the same recipe as for RF
+
 ```{r}
 set.seed(732)
 
@@ -454,11 +456,6 @@ set.seed(732)
 cores <- 4L 
 
 # model specification
-rf_mod <- 
-  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
-  set_engine("ranger", num.threads = cores) %>% 
-  set_mode("classification")
-
 xgb_mod <- 
   boost_tree(
     trees = 50, 
@@ -469,11 +466,11 @@ xgb_mod <-
     loss_reduction = tune(), 
     sample_size = tune(), 
     stop_iter = tune()) %>% 
-  set_engine("xgboost") %>% 
+  set_engine("xgboost", num.threads = cores) %>% 
   set_mode("classification")
 
 # join model and processing recipe
-rm_cv_wf <- workflow() %>% 
+xgb_cv_wf <- workflow() %>% 
   add_model(xgb_mod) %>% 
   add_recipe(my_recipe)
 
@@ -484,18 +481,59 @@ cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 5)
 cls_metrics <- metric_set(roc_auc, j_index)
 
 # tune models, this takes time
-rf_res <- tune_grid(rm_cv_wf,
+xgb_res <- tune_grid(xgb_cv_wf,
             grid = 25,
             resamples = cv_folds,
             control = control_grid(save_pred = TRUE),
             metrics = cls_metrics)
 ```
 
+## Tuning results
 
-# Compare Logistic Regression and Random Forest models
+```{r, fig.width=7}
+autoplot(xgb_res)
+```
+
+## Choose the best model
+
+5 best models ranked by mean AUC
 
 ```{r}
-bind_rows(rf_auc, lr_auc) %>% 
+xgb_res %>% 
+  show_best(metric = "roc_auc")
+```
+
+5 best models ranked by mean J-index
+
+```{r}
+xgb_res %>% 
+  show_best(metric = "j_index")
+```
+
+The best hyper-parameters look like this:
+
+```{r}
+xgb_best <- xgb_res %>% 
+  select_best(metric = "roc_auc")
+
+xgb_best
+```
+
+## ROC-AUC of the best model
+
+```{r}
+xgb_auc <- xgb_res %>% 
+  collect_predictions(parameters = xgb_best) %>% 
+  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
+  mutate(model = "Boosted Trees")
+
+autoplot(xgb_auc)
+```
+
+# Compare Logistic Regression, Random Forest and Boosted Trees models
+
+```{r}
+bind_rows(rf_auc, lr_auc, xgb_auc) %>% 
   ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
   geom_path(lwd = 1, alpha = 0.8) +
   geom_abline(lty = 3) + 
@@ -504,61 +542,92 @@ bind_rows(rf_auc, lr_auc) %>%
 
 ```
 
-As expected, RF model performs better than LR.
+As expected, Boosted Trees (BT) model performs (slightly) better than RF, and both BT and RF perform significantly better than LR.
 
-I choose it to apply to the test data set
+I choose BT to apply it to the test data set.
 
-The last fit
+# The final fit
+
+Fit the BT model with chosen hyper-parameters to the entire training data set and test it on the test data set
 
 ```{r}
 # the last model
-last_rf_mod <- 
-  rand_forest(mtry = 1, min_n = 38, trees = 1000) %>% # this comes from the best chosen model
-  set_engine("ranger", num.threads = cores, importance = "impurity") %>% 
+last_xgb_mod <- 
+  boost_tree(trees = 50,
+             mtry = xgb_best$mtry, 
+             min_n = xgb_best$min_n, 
+             tree_depth = xgb_best$tree_depth,
+             learn_rate = xgb_best$learn_rate,
+             loss_reduction = xgb_best$loss_reduction,
+             sample_size = xgb_best$sample_size,
+             stop_iter = xgb_best$stop_iter) %>%
+  set_engine("xgboost", num.threads = cores) %>% 
   set_mode("classification")
 
 # the last workflow
-last_rf_workflow <- 
-  rf_workflow %>% 
-  update_model(last_rf_mod)
+last_xgb_wf <- 
+  xgb_cv_wf %>% 
+  update_model(last_xgb_mod)
 
 # the last fit
 set.seed(345)
-last_rf_fit <- 
-  last_rf_workflow %>% 
+last_xgb_fit <- 
+  last_xgb_wf %>% 
   last_fit(data_split)
-
-last_rf_fit
-
 ```
 
 
-On test set
+## Basic performance metrics on the test data set
 
 ```{r}
-last_rf_fit %>% 
+last_xgb_fit %>% 
   collect_metrics()
 ```
 
-Variable importance
+## Variable importance
 
 ```{r}
-last_rf_fit %>% 
+last_xgb_fit %>% 
   extract_fit_parsnip() %>% 
-  vip(num_features = 20)
-
+  vip(num_features = 12)
 ```
 
+Interesting, Sex does not play any role in prediction process.
+
+## ROC curve on the test data set
+
 ```{r}
-last_rf_fit %>% 
+last_xgb_fit %>% 
   collect_predictions() %>% 
   roc_curve(Diagnosis, .pred_Hepatitis) %>% 
   autoplot()
 
 ```
 
+Sensitivity reaches 1.0 while Specificity is still quite close to 1.0, which means that this model can predict all hepatitis cases and report low number of false positives at the same time.
 
+## Confusion matrix
 
+With probability cut-off 0.5
+
+```{r}
+cm <- last_xgb_fit %>%
+  collect_predictions() %>%
+  conf_mat(truth = Diagnosis, estimate = .pred_class)
+
+autoplot(cm, type = "heatmap")
+```
+
+## Other performance metrics
+
+```{r}
+summary(cm)
+```
+
+## Conclusion
+
+From a clinical perspective, we should be interested both in high sensitivity and specificity, because we do not want to miss any patients with the sickness and at the same time we do not want to raise alarms falsely too many times. The extent to which we can accept lower levels of both metrics varies in each case and should be discussed.
+This model's sensitivity can be adjusted using a lower than 0.5 probability cut-off.
 
 ------------------------------------------------------------------------
 
