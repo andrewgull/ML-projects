@@ -16,10 +16,10 @@ editor: visual
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+library(tidymodels)
 library(skimr)
 library(readr)
 library(stringr)
-library(tidymodels)
 library(themis) # for SMOTE and other recipes for target balancing
 library(vip) # for variable importance
 ```
@@ -216,9 +216,11 @@ Difference in proportion of each sex is not that big between `Donor` and `Hepati
 
 # Data processing
 
-The following analysis is based on tidyverse tutorials and examples [here](https://www.tidymodels.org/start/recipes/), [here](https://www.tidymodels.org/start/resampling/), [here](https://www.tidymodels.org/learn/work/tune-svm/).
+The following analysis is based on tidyverse tutorials and examples [here](https://www.tidymodels.org/start/recipes/), [here](https://www.tidymodels.org/start/resampling/) and [here](https://www.tidymodels.org/learn/work/tune-svm/).
 
 ## Split
+
+Stratified splitting because target class is imbalanced.
 
 ```{r data.split}
 set.seed(124)
@@ -239,7 +241,7 @@ val_set <- validation_split(df_train,
 
 - Impute using median
 
-- Turn nominal variables into dummies (it is not required by tree-based models or logistic regression, but without this step oversampling step won't work)
+- Turn nominal variables into dummies (it is not required by tree-based models or logistic regression, but without this step oversampling step will not work)
 
 - Normalize all predictors
 
@@ -256,7 +258,7 @@ my_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
 my_recipe
 ```
 
-```{r, include=FALSE, echo=FALSE}
+```{r, include=FALSE, eval=FALSE}
 # the other way is to apply the recipe to your data immediately
 # prep & bake
 train_data <- my_recipe %>% 
@@ -276,11 +278,15 @@ test_data %>% count(Diagnosis) # not applied
 
 # Tune and fit Random Forest models
 
-Stratified, repeated 10-fold cross-validation is used
+Stratified, repeated 10-fold cross-validation will be used.
 
 ROC and J-index will be used as maximization metrics.
 
 >If a model is poorly calibrated, the ROC curve value might not show diminished performance. However, the J index would be lower for models with pathological distributions for the class probabilities. 
+
+I will use grid search to tune both RF hyper-parameters: `mtry` and `min_n`
+
+>The `mtry` hyperparameter sets the number of predictor variables that each node in the decision tree “sees” and can learn about, so it can range from 1 to the total number of features present; when `mtry` = all possible features, the model is the same as bagging decision trees. The min_n hyperparameter sets the minimum n to split at any node
 
 ```{r}
 set.seed(5732)
@@ -300,7 +306,7 @@ rm_cv_wf <- workflow() %>%
   add_recipe(my_recipe)
 
 # Stratified, repeated 10-fold cross-validation
-cv_folds <- vfold_cv(df_train, strata = "Diagnosis", repeats = 5)
+cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 5)
 
 # metrics
 cls_metrics <- metric_set(roc_auc, j_index)
@@ -312,15 +318,59 @@ rf_res <- tune_grid(rm_cv_wf,
             control = control_grid(save_pred = TRUE),
             metrics = cls_metrics)
 
-# look at the models' ROC
+```
+
+## Tuning results
+
+```{r}
 autoplot(rf_res)
 ```
 
+It is better to choose `mtry` and `min_n` corresponding to higher ROC-AUC *and* J-index.
+
+## Choose the best model
+
+5 best models ranked by mean AUC
+
+```{r}
+rf_res %>% 
+  show_best(metric = "roc_auc")
+```
+
+5 best models ranked by J-index
+
+```{r}
+rf_res %>% 
+  show_best(metric = "j_index")
+```
+
+The best hyper-parameters look like this:
+
+```{r}
+rf_best <- rf_res %>% 
+  select_best(metric = "roc_auc")
+
+rf_best
+```
+
+## ROC-AUC of the best model
+
+```{r}
+rf_auc <- rf_res %>% 
+  collect_predictions(parameters = rf_best) %>% 
+  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
+  mutate(model = "Random Forest")
+
+autoplot(rf_auc)
+```
+
+The ROC-curve looks very good: it reaches both Sensitivity/TPR = 1.0 *and* 1-Specificity/FPR = 1.0
+
 # Tune and fit penalized logistic regression
 
-Package [glmnet](https://glmnet.stanford.edu/articles/glmnet.html) will be used.
+For regularized logistic regression, package [glmnet](https://glmnet.stanford.edu/articles/glmnet.html) will be used.
 
-Recipe for this model includes removal of correlated variables (correlation threshold = 0.75)
+Recipe for this model is the same as for RF models + removing of correlated variables (correlation threshold = 0.75)
 
 ```{r}
 # recipe for LR
@@ -350,43 +400,39 @@ lr_res <- tune_grid(lr_workflow,
               resamples = cv_folds,
               control = control_grid(save_pred = TRUE),
               metrics = cls_metrics)
-
-lr_plot <- lr_res %>% 
-  collect_metrics() %>% 
-  ggplot(aes(x = penalty, y = mean)) + 
-  geom_point() + 
-  geom_line() + 
-  ylab("Area under the ROC Curve") +
-  scale_x_log10(labels = scales::label_number())
-
-lr_plot
 ```
 
-Best models
+## Tuning results
+
+```{r}
+autoplot(lr_res)
+```
+
+>The lower the penalty, the smaller the number of predictors used by the model. Such models should be preferred.
+
+## Choose the best model
+
+Here you see top 5 best models based on mean AUC and ranked by penalty score
 
 ```{r}
 top_models <-
   lr_res %>% 
-  show_best("roc_auc", n = 15) %>% 
+  show_best("roc_auc", n = 5) %>% 
   arrange(penalty) 
 
 top_models %>% arrange(penalty)
 ```
 
-the lower the penalty, the smaller the number of predictors used by the model. Such models should be preferred.
-
-Let's take the model 19 from the table above
+I will choose a model with the highest mean AUC
 
 ```{r}
-lr_best <- 
-  lr_res %>% 
-  collect_metrics() %>% 
-  arrange(penalty) %>% 
-  slice(12)
+lr_best <- lr_res %>% 
+  select_best(metric = "roc_auc")
+
 lr_best
 ```
 
-
+## ROC-AUC of the best model
 
 ```{r}
 lr_auc <- 
@@ -399,77 +445,54 @@ autoplot(lr_auc)
 
 ```
 
-
-Random forest
+# Tune and fit Boosted Trees model
 
 ```{r}
-# cores
-cores <- parallel::detectCores() # 8
-cores <- 6L
+set.seed(732)
 
-# model
+# number of cores available on Kaggle
+cores <- 4L 
+
+# model specification
 rf_mod <- 
   rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
   set_engine("ranger", num.threads = cores) %>% 
   set_mode("classification")
 
-# preprocessing recipe
-# there is no need in normalising and making dummies, but I'll make dummy for Sex variable to use SMOTE
-# only imputation and oversampling
-rf_recipe <- 
-  recipe(Diagnosis ~ ., data = df_train) %>% 
-  step_impute_median(all_numeric_predictors()) %>% # I use median bcz not that many observations are missing
-  step_dummy(all_nominal_predictors()) %>% 
-  step_smote(Diagnosis, over_ratio = 1, seed = 100) # original target distribution 399 v 62 
+xgb_mod <- 
+  boost_tree(
+    trees = 50, 
+    mtry = tune(), 
+    min_n = tune(), 
+    tree_depth = tune(), 
+    learn_rate = tune(), 
+    loss_reduction = tune(), 
+    sample_size = tune(), 
+    stop_iter = tune()) %>% 
+  set_engine("xgboost") %>% 
+  set_mode("classification")
 
-# workflow
-rf_workflow <- 
-  workflow() %>% 
-  add_model(rf_mod) %>% 
-  add_recipe(rf_recipe)
+# join model and processing recipe
+rm_cv_wf <- workflow() %>% 
+  add_model(xgb_mod) %>% 
+  add_recipe(my_recipe)
 
+# Stratified, repeated 10-fold cross-validation
+cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 5)
 
-```
+# metrics
+cls_metrics <- metric_set(roc_auc, j_index)
 
-The `mtry` hyperparameter sets the number of predictor variables that each node in the decision tree “sees” and can learn about, so it can range from 1 to the total number of features present; when `mtry` = all possible features, the model is the same as bagging decision trees. The min_n hyperparameter sets the minimum n to split at any node
-
-```{r}
-# tune
-set.seed(345)
-
-rf_res <- 
-  rf_workflow %>% 
-  tune_grid(val_set,
+# tune models, this takes time
+rf_res <- tune_grid(rm_cv_wf,
             grid = 25,
+            resamples = cv_folds,
             control = control_grid(save_pred = TRUE),
-            metrics = metric_set(roc_auc))
-#> i Creating pre-processing data to finalize unknown parameter: mtry
-
-rf_res %>% 
-  show_best(metric = "roc_auc")
+            metrics = cls_metrics)
 ```
 
-```{r}
-autoplot(rf_res)
-```
 
-```{r}
-rf_best <- 
-  rf_res %>% 
-  select_best(metric = "roc_auc")
-rf_best
-```
-
-```{r}
-rf_auc <- 
-  rf_res %>% 
-  collect_predictions(parameters = rf_best) %>% 
-  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
-  mutate(model = "Random Forest")
-rf_auc
-```
-
-Compare LR and RF
+# Compare Logistic Regression and Random Forest models
 
 ```{r}
 bind_rows(rf_auc, lr_auc) %>% 
@@ -481,6 +504,9 @@ bind_rows(rf_auc, lr_auc) %>%
 
 ```
 
+As expected, RF model performs better than LR.
+
+I choose it to apply to the test data set
 
 The last fit
 
@@ -532,306 +558,7 @@ last_rf_fit %>%
 ```
 
 
-## Imputation
 
-```{r, warning=FALSE, message=FALSE}
-library(mice)
-
-imp_mice <- mice(df)
-df_imp <- complete(imp_mice)
-
-```
-
-## Dummy vars
-
-`Sex` is the only categorical variable in this data set.
-
-For tree based models it is [not necessary](https://bookdown.org/max/FES/categorical-trees.html) to turn categorical variables (factors) to dummy variables.
-
-```{r, include=FALSE, eval=FALSE}
-to_dum <- df_imp %>% select(Sex)
-# make an obj
-dummies <- dummyVars(~ ., data = to_dum)
-# apply it
-df_dummy <- data.frame(predict(dummies, newdata = to_dum))
-
-head(df_dummy)
-```
-
-## Scaling and centering
-
-```{r}
-df_proc <- df_imp %>% 
-  select(-c(Sex, Diagnosis)) %>% 
-  scale() %>% 
-  data.frame() %>% 
-  mutate(Sex = df$Sex, Diagnosis = df$Diagnosis)
-
-head(df_proc)
-```
-
-# Split data into training and testing
-
-```{r data.split}
-set.seed(124)
-
-data_split <- initial_split(df_proc, prop = 3/4)
-
-df_train <- training(data_split)
-df_test <- testing(data_split)
-```
-
-## Target class equalization in training data set
-
-Initial target class counts:
-
-```{r}
-df_train %>%
-  count(Diagnosis)
-```
-
-To make the target class balanced, I use Synthetic Minority Oversampling Technique (SMOTE) to create training data set, but not testing one. 
-
-Target class now looks like this:
-
-```{r smote}
-df_train_smote <- SMOTE(Diagnosis ~ ., data.frame(df_train), perc.over = 400, perc.under = 160)
-
-df_train_smote %>%
-  count(Diagnosis)
-```
-
-Now the target variable is more balanced.
-
-# Random Forest
-
-## Using parsnip
-
-```{r}
-set.seed(56982)
-rf_with_seed %>% 
-  set_args(mtry = 4) %>% 
-  set_engine("randomForest") %>%
-  fit(Diagnosis ~ ., data = df_train_smote)
-```
-
-
-## Training
-
-5-fold CV repeated 10 times
-
-```{r rf.train}
-set.seed(120)
-
-fit_ctrl <- trainControl(## 5-fold CV
-                           method = "repeatedcv",
-                           number = 5,
-                           repeats = 10, 
-                           allowParallel = T,
-                           classProbs = T,
-                           summaryFunction = twoClassSummary)
-
-fit_rf <- train(Diagnosis ~ ., 
-                 data = df_train_smote, 
-                 metric = "ROC", 
-                 method = "rf", 
-                 trControl = fit_ctrl,
-                 tuneGrid = expand.grid(.mtry = seq(2, 12, 0.5)),
-                 ntree = 10,
-                 nodesize = 1,
-                 verbosity = 0,
-                 verbose = FALSE)
-
-fit_rf
-
-```
-
-## Features Importance
-
-```{r featimp.rf}
-imp_vars_rf <- varImp(fit_rf)
-
-plot(imp_vars_rf, main = "Variable Importance with RF")
-
-```
-
-## Testing
-
-Here's a function to summarize a model's performance, it is used below.
-
-```{r roc.fun}
-get_roc <- function(fit.obj, testing.df){
-  pred_prob <- predict.train(fit.obj, newdata = testing.df, type = "prob")
-  pred_roc <- prediction(predictions = pred_prob$Hepatitis, labels = testing.df$Diagnosis)
-  perf_roc <- performance(pred_roc, measure = "tpr", x.measure = "fpr")
-  return(list(perf_roc, pred_roc))
-}
-```
-
-### ROC curve
-
-RF's performance on the testing data set
-
-```{r roc.rf}
-# calculate ROC
-perf_pred <- get_roc(fit_rf, df_test)
-perf_rf <- perf_pred[[1]]
-pred_rf <- perf_pred[[2]]
-
-# take AUC 
-auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
-
-# plot
-plot(perf_rf, main = "RF ROC curve", col = "steelblue", lwd = 3)
-abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
-
-```
-
-AUC is pretty close to 1.0, True Positive Rate close to 1.0 while False Positive Rate is low
-
-### TPR v FPR
-
-```{r tpr.rf}
-# choose your cut-off
-cutoff <- 0.08
-
-# use pred_rf (pred_roc) object
-plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
-     col="steelblue", 
-     ylab = "Rate", 
-     xlab="Probability cutoff")
-
-plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
-     add = T, col = "red")
-
-legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
-
-#abline(v = cutoff, lwd = 2, lty=6)
-
-title("RF")
-```
-
-Unfortunately TPR falls quickly even at low probability cutoff, which means it's hard to 'catch' all cases with hepatitis without 'catching' any false positive predictions.
-
-Let's have a look at the confusion matrix.
-
-### Confusion matrix
-
-With selected cutoff
-
-```{r cm.rf}
-pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
-
-# turn probabilities into classes
-pred_class_rf <- ifelse(pred_prob_rf$Hepatitis > cutoff, "Hepatitis", "Donor")
-
-pred_class_rf <- as.factor(pred_class_rf)
-
-cm_rf <- confusionMatrix(data = pred_class_rf, 
-                reference = df_test$Diagnosis,
-                mode = "everything",
-                positive = "Hepatitis")
-
-cm_rf
-```
-
-We see. that almost all hepatitis cases have been predicted but we still have a lot of false positives which makes PPV quite low \~0.5
-
-In other words, if our model predicts a patient to have hepatitis, there is \~50% chance that the patient doesn't have it.
-
-Also, the model should be able to capture **all** cases with the disease - that's what is required in clinical practice, i.e Sensitivity/Recall should be 1.0
-
-To overcome these two problems, a better algorithm should be used or the current one should be tuned better.
-
-# Boosting
-
-## Train
-
-```{r xgb.train, eval=T}
-set.seed(121)
-# basic grid search
-fit_xgb <- train(Diagnosis ~ ., 
-                 data = df_train_smote, 
-                 method = "xgbTree",
-                 metric = "ROC", 
-                 trControl = fit_ctrl,
-                 tuneLength = 5,
-                 nthreads = 12,
-                 verbose = FALSE,
-                 verbosity = 0)
-
-fit_xgb$bestTune
-```
-
-## Features importance
-
-```{r featimp.xgb, eval=T}
-imp_vars_xgb <- varImp(fit_xgb)
-
-plot(imp_vars_xgb, main = "Variable Importance with XGB")
-```
-
-## Test
-
-### ROC
-
-```{r roc.xgb, eval=T}
-# calculate ROC
-perf_pred <- get_roc(fit_xgb, df_test)
-perf_xgb <- perf_pred[[1]]
-pred_xgb <- perf_pred[[2]]
-
-# take AUC 
-auc_xgb <- round(unlist(slot(performance(pred_xgb, measure = "auc"), "y.values")), 3)
-
-# plot
-plot(perf_xgb, main = "XGB ROC curve", col = "steelblue", lwd = 3)
-abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
-
-```
-
-### TPR v FPR
-
-```{r tpr.xgb, eval=T}
-cutoff <- 0.12
-
-# use pred_rf (pred_roc) object
-plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
-     col="steelblue", 
-     ylab = "Rate", 
-     xlab="Probability cutoff")
-
-plot(performance(pred_xgb, measure = "fpr", x.measure = "cutoff"), 
-     add = T, col = "red")
-
-legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
-
-abline(v = cutoff, lwd = 2, lty= 6)
-
-title("XGB")
-```
-
-### Confusion matrix with selected cutoff
-
-```{r cm.xgb, eval=T}
-pred_prob_xgb <- predict(fit_xgb, newdata = df_test, type = "prob")
-
-# turn probabilities into classes
-pred_class_xgb <- ifelse(pred_prob_xgb$Hepatitis > cutoff, "Hepatitis", "Donor")
-
-pred_class_xgb <- as.factor(pred_class_xgb)
-
-cm_xgb <- confusionMatrix(data = pred_class_xgb, 
-                reference = df_test$Diagnosis,
-                mode = "everything",
-                positive = "Hepatitis")
-
-cm_xgb
-```
 
 ------------------------------------------------------------------------
 
