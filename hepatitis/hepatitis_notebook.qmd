@@ -1,5 +1,5 @@
 ---
-title: "Hepatits C prediction"
+title: "Hepatits C prediction using R and tidymodels"
 author: "A.G."
 date-modified: "last update: `r format(Sys.Date(), format = '%d %B %Y')`"
 format: 
@@ -17,9 +17,11 @@ editor: visual
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(skimr)
-library(tidyverse)
+library(readr)
+library(stringr)
 library(tidymodels)
 library(themis) # for SMOTE and other recipes for target balancing
+library(vip) # for variable importance
 ```
 
 # Intro
@@ -32,6 +34,8 @@ I'll join *Cirrhosis*, *Fibrosis* and *Hepatitis C* into one category **Hepatiti
 
 # Read data set
 
+The data set looks like this:
+
 ```{r}
 df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% select(-...1)
 
@@ -39,14 +43,14 @@ df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% sele
 # there is 0=Blood Donor and 0s=suspect Blood Donor
 df <- df %>% 
   mutate(Diagnosis = if_else(str_detect(Category, "Donor"), "Donor", "Hepatitis")) %>%
-  mutate(Diagnosis = factor(Diagnosis, levels = c("Donor", "Hepatitis"))) %>%
+  mutate(Diagnosis = factor(Diagnosis, levels = c("Hepatitis", "Donor"))) %>%
   relocate(Diagnosis, .before = Category) %>%
   select(-Category)
 
 head(df)
 ```
 
-# Description
+# Descriptive statistics
 
 ## Factor variables
 
@@ -212,115 +216,319 @@ Difference in proportion of each sex is not that big between `Donor` and `Hepati
 
 # Data processing
 
-## Using recipes
+The following analysis is based on tidyverse tutorials and examples [here](https://www.tidymodels.org/start/recipes/), [here](https://www.tidymodels.org/start/resampling/), [here](https://www.tidymodels.org/learn/work/tune-svm/).
 
-### Split
+## Split
 
 ```{r data.split}
 set.seed(124)
 
-data_split <- initial_split(df, prop = 3/4)
+data_split <- initial_split(df, prop = 3/4, strata = Diagnosis)
 
 df_train <- training(data_split)
 df_test <- testing(data_split)
+
+# make a validation set
+# to test a model on 0.8 of the test data set, validate on 0.2
+val_set <- validation_split(df_train, 
+                            strata = Diagnosis,
+                            prop = 0.80)
 ```
 
-### Preprocessing
+## Preprocessing
+
+- Impute using median
+
+- Turn nominal variables into dummies (it is not required by tree-based models or logistic regression, but without this step oversampling step won't work)
+
+- Normalize all predictors
+
+- Balance target classes using SMOTE algorithm
 
 ```{r}
 my_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
-  step_zv(all_predictors()) %>% # to remove 0 disperse
-  step_center(all_numeric_predictors()) %>% 
-  step_scale(all_numeric_predictors()) %>% 
   step_impute_median(all_numeric_predictors()) %>% # I use median bcz not that many observations are missing
-  step_dummy(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% # dummy goes before normalisation
+  step_normalize(all_predictors()) %>% 
   step_smote(Diagnosis, over_ratio = 1, seed = 100) %>% # original target distribution 399 v 62
   check_missing(all_predictors())
 
 my_recipe
 ```
 
-### Prepare and bake the recipe
-
-```{r}
+```{r, include=FALSE, echo=FALSE}
+# the other way is to apply the recipe to your data immediately
 # prep & bake
 train_data <- my_recipe %>% 
-  prep( training = df_train) %>% 
-  bake(new_data = NULL) # ???
+  prep(training = df_train) %>% 
+  bake(new_data = NULL) # df_train will be processed
 
 # bake test. what about SMOTE?
 test_data <- my_recipe %>% 
   prep( training = df_test) %>% 
   bake(new_data = df_test)
+
+# check oversampling results
+train_data %>% count(Diagnosis) # SMOTE was applied
+test_data %>% count(Diagnosis) # not applied
 ```
 
 
-### Check
+# Tune and fit Random Forest models
+
+Stratified, repeated 10-fold cross-validation is used
+
+ROC and J-index will be used as maximization metrics.
+
+>If a model is poorly calibrated, the ROC curve value might not show diminished performance. However, the J index would be lower for models with pathological distributions for the class probabilities. 
 
 ```{r}
-train_data
+set.seed(5732)
+
+# number of cores available on Kaggle
+cores <- 4L 
+
+# model specification
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+
+# join model and processing recipe
+rm_cv_wf <- workflow() %>% 
+  add_model(rf_mod) %>% 
+  add_recipe(my_recipe)
+
+# Stratified, repeated 10-fold cross-validation
+cv_folds <- vfold_cv(df_train, strata = "Diagnosis", repeats = 5)
+
+# metrics
+cls_metrics <- metric_set(roc_auc, j_index)
+
+# tune models, this takes time
+rf_res <- tune_grid(rm_cv_wf,
+            grid = 25,
+            resamples = cv_folds,
+            control = control_grid(save_pred = TRUE),
+            metrics = cls_metrics)
+
+# look at the models' ROC
+autoplot(rf_res)
 ```
 
-```{r}
-train_data %>% count(Diagnosis)
-```
+# Tune and fit penalized logistic regression
 
+Package [glmnet](https://glmnet.stanford.edu/articles/glmnet.html) will be used.
 
-Model engine
-
-```{r}
-lr_mod <- 
-  logistic_reg() %>% 
-  set_engine("glm")
-```
-
-Model workflow
+Recipe for this model includes removal of correlated variables (correlation threshold = 0.75)
 
 ```{r}
-hep_wflow <- 
+# recipe for LR
+lr_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
+  step_impute_median(all_numeric_predictors()) %>% # I use median bcz not that many observations are missing
+  step_dummy(all_nominal_predictors()) %>% # dummy goes before normalisation
+  step_normalize(all_predictors()) %>% 
+  step_corr(threshold = 0.75) %>%
+  step_smote(Diagnosis, over_ratio = 1, seed = 100) # original target distribution 399 v 62
+
+# set model type/engine
+lr_mod <- logistic_reg(penalty = tune(), mixture = 1) %>% 
+  set_engine("glmnet")
+
+# define the workflow
+lr_workflow <- 
   workflow() %>% 
   add_model(lr_mod) %>% 
-  add_recipe(hep_rec)
+  add_recipe(lr_recipe)
 
-hep_wflow
+# create a tune grid
+lr_reg_grid <- tibble(penalty = 10**seq(-4, 0, length.out = 30))
+
+# train and tune the model
+lr_res <- tune_grid(lr_workflow,
+              grid = lr_reg_grid,
+              resamples = cv_folds,
+              control = control_grid(save_pred = TRUE),
+              metrics = cls_metrics)
+
+lr_plot <- lr_res %>% 
+  collect_metrics() %>% 
+  ggplot(aes(x = penalty, y = mean)) + 
+  geom_point() + 
+  geom_line() + 
+  ylab("Area under the ROC Curve") +
+  scale_x_log10(labels = scales::label_number())
+
+lr_plot
 ```
 
-Train the actual model
+Best models
 
 ```{r}
-hep_fit <- 
-  hep_wflow %>% 
-  fit(data = df_train_smote)
+top_models <-
+  lr_res %>% 
+  show_best("roc_auc", n = 15) %>% 
+  arrange(penalty) 
+
+top_models %>% arrange(penalty)
 ```
 
-Extract the fit object
+the lower the penalty, the smaller the number of predictors used by the model. Such models should be preferred.
+
+Let's take the model 19 from the table above
 
 ```{r}
-hep_fit %>% 
+lr_best <- 
+  lr_res %>% 
+  collect_metrics() %>% 
+  arrange(penalty) %>% 
+  slice(12)
+lr_best
+```
+
+
+
+```{r}
+lr_auc <- 
+  lr_res %>% 
+  collect_predictions(parameters = lr_best) %>% 
+  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
+  mutate(model = "Logistic Regression")
+
+autoplot(lr_auc)
+
+```
+
+
+Random forest
+
+```{r}
+# cores
+cores <- parallel::detectCores() # 8
+cores <- 6L
+
+# model
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+
+# preprocessing recipe
+# there is no need in normalising and making dummies, but I'll make dummy for Sex variable to use SMOTE
+# only imputation and oversampling
+rf_recipe <- 
+  recipe(Diagnosis ~ ., data = df_train) %>% 
+  step_impute_median(all_numeric_predictors()) %>% # I use median bcz not that many observations are missing
+  step_dummy(all_nominal_predictors()) %>% 
+  step_smote(Diagnosis, over_ratio = 1, seed = 100) # original target distribution 399 v 62 
+
+# workflow
+rf_workflow <- 
+  workflow() %>% 
+  add_model(rf_mod) %>% 
+  add_recipe(rf_recipe)
+
+
+```
+
+The `mtry` hyperparameter sets the number of predictor variables that each node in the decision tree “sees” and can learn about, so it can range from 1 to the total number of features present; when `mtry` = all possible features, the model is the same as bagging decision trees. The min_n hyperparameter sets the minimum n to split at any node
+
+```{r}
+# tune
+set.seed(345)
+
+rf_res <- 
+  rf_workflow %>% 
+  tune_grid(val_set,
+            grid = 25,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+#> i Creating pre-processing data to finalize unknown parameter: mtry
+
+rf_res %>% 
+  show_best(metric = "roc_auc")
+```
+
+```{r}
+autoplot(rf_res)
+```
+
+```{r}
+rf_best <- 
+  rf_res %>% 
+  select_best(metric = "roc_auc")
+rf_best
+```
+
+```{r}
+rf_auc <- 
+  rf_res %>% 
+  collect_predictions(parameters = rf_best) %>% 
+  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
+  mutate(model = "Random Forest")
+rf_auc
+```
+
+Compare LR and RF
+
+```{r}
+bind_rows(rf_auc, lr_auc) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
+  geom_path(lwd = 1, alpha = 0.8) +
+  geom_abline(lty = 3) + 
+  coord_equal() + 
+  scale_color_viridis_d(option = "plasma", end = .6)
+
+```
+
+
+The last fit
+
+```{r}
+# the last model
+last_rf_mod <- 
+  rand_forest(mtry = 1, min_n = 38, trees = 1000) %>% # this comes from the best chosen model
+  set_engine("ranger", num.threads = cores, importance = "impurity") %>% 
+  set_mode("classification")
+
+# the last workflow
+last_rf_workflow <- 
+  rf_workflow %>% 
+  update_model(last_rf_mod)
+
+# the last fit
+set.seed(345)
+last_rf_fit <- 
+  last_rf_workflow %>% 
+  last_fit(data_split)
+
+last_rf_fit
+
+```
+
+
+On test set
+
+```{r}
+last_rf_fit %>% 
+  collect_metrics()
+```
+
+Variable importance
+
+```{r}
+last_rf_fit %>% 
   extract_fit_parsnip() %>% 
-  tidy()
+  vip(num_features = 20)
+
 ```
 
-Predict
-
 ```{r}
-hep_aug <- 
-  augment(hep_fit, df_test)
-
-hep_aug
-```
-
-get ROC
-
-```{r}
-hep_aug %>% 
-  roc_curve(truth = Diagnosis, .pred_Donor) %>% 
+last_rf_fit %>% 
+  collect_predictions() %>% 
+  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
   autoplot()
-```
 
-```{r}
-hep_aug %>% 
-  roc_auc(truth = Diagnosis, .pred_Donor)
 ```
 
 
@@ -600,9 +808,9 @@ plot(performance(pred_xgb, measure = "fpr", x.measure = "cutoff"),
      add = T, col = "red")
 
 legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col =c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
+       lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
 
-abline(v = cutoff, lwd = 2, lty=6)
+abline(v = cutoff, lwd = 2, lty= 6)
 
 title("XGB")
 ```
