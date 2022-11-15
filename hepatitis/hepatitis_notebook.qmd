@@ -17,11 +17,11 @@ editor: visual
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
 library(tidymodels)
-library(skimr)
-library(readr)
-library(stringr)
+library(skimr) # descriptive stats
+library(stringr) # same idea
 library(themis) # for SMOTE and other recipes for target balancing
 library(vip) # for variable importance
+library(probably) # for performance calibration
 ```
 
 # Intro
@@ -37,7 +37,7 @@ I'll join *Cirrhosis*, *Fibrosis* and *Hepatitis C* into one category **Hepatiti
 The data set looks like this:
 
 ```{r}
-df <- read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% select(-...1)
+df <- readr::read_csv("data/HepatitisCdata.csv", col_types = "dfdfdddddddddd") %>% select(-...1)
 
 # make re-coded Category variable
 # there is 0=Blood Donor and 0s=suspect Blood Donor
@@ -229,23 +229,19 @@ data_split <- initial_split(df, prop = 3/4, strata = Diagnosis)
 
 df_train <- training(data_split)
 df_test <- testing(data_split)
-
-# make a validation set
-# to test a model on 0.8 of the test data set, validate on 0.2
-val_set <- validation_split(df_train, 
-                            strata = Diagnosis,
-                            prop = 0.80)
 ```
 
 ## Preprocessing
 
-- Impute using median
+-   Impute using median
 
-- Turn nominal variables into dummies (it is not required by tree-based models or logistic regression, but without this step oversampling step will not work)
+-   Turn nominal variables into dummies (it is not required by tree-based models or logistic regression, but without this step oversampling step will not work)
 
-- Normalize all predictors
+-   Normalize all predictors
 
-- Balance target classes using SMOTE algorithm
+-   Balance target classes using SMOTE algorithm
+
+The preprocessing recipe looks like this:
 
 ```{r}
 my_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
@@ -275,18 +271,17 @@ train_data %>% count(Diagnosis) # SMOTE was applied
 test_data %>% count(Diagnosis) # not applied
 ```
 
-
 # Tune and fit Random Forest models
 
 Stratified, repeated 10-fold cross-validation will be used.
 
 ROC and J-index will be used as maximization metrics.
 
->If a model is poorly calibrated, the ROC curve value might not show diminished performance. However, the J index would be lower for models with pathological distributions for the class probabilities. 
+> If a model is poorly calibrated, the ROC curve value might not show diminished performance. However, the J index would be lower for models with pathological distributions for the class probabilities.
 
 I will use grid search to tune both RF hyper-parameters: `mtry` and `min_n`
 
->The `mtry` hyperparameter sets the number of predictor variables that each node in the decision tree “sees” and can learn about, so it can range from 1 to the total number of features present; when `mtry` = all possible features, the model is the same as bagging decision trees. The min_n hyperparameter sets the minimum n to split at any node
+> The `mtry` hyperparameter sets the number of predictor variables that each node in the decision tree "sees" and can learn about, so it can range from 1 to the total number of features present; when `mtry` = all possible features, the model is the same as bagging decision trees. The min_n hyperparameter sets the minimum n to split at any node
 
 ```{r}
 set.seed(5732)
@@ -408,7 +403,7 @@ lr_res <- tune_grid(lr_workflow,
 autoplot(lr_res)
 ```
 
->The lower the penalty, the smaller the number of predictors used by the model. Such models should be preferred.
+> The lower the penalty, the smaller the number of predictors used by the model. Such models should be preferred.
 
 ## Choose the best model
 
@@ -576,7 +571,6 @@ last_xgb_fit <-
   last_fit(data_split)
 ```
 
-
 ## Basic performance metrics on the test data set
 
 ```{r}
@@ -592,7 +586,7 @@ last_xgb_fit %>%
   vip(num_features = 12)
 ```
 
-Interesting, Sex does not play any role in prediction process.
+Interestingly, Sex does not play any role in prediction process.
 
 ## ROC curve on the test data set
 
@@ -606,28 +600,78 @@ last_xgb_fit %>%
 
 Sensitivity reaches 1.0 while Specificity is still quite close to 1.0, which means that this model can predict all hepatitis cases and report low number of false positives at the same time.
 
-## Confusion matrix
+## Balancing performance by choosing optimal probability cut-off.
 
-With probability cut-off 0.5
+I will use j-index (as explained [here](https://probably.tidymodels.org/articles/where-to-use.html)) to balance performance of the model.
+
+>j-index has a maximum value of 1 when there are no false positives and no false negatives. It can be used as justification of whether or not an increase in the threshold value is worth it. If increasing the threshold results in more of an increase in the specificity than a decrease in the sensitivity, we can see that with j-index.
 
 ```{r}
-cm <- last_xgb_fit %>%
+# collect sens, spec, j-index at various cut-offs
+threshold_data <- 
+  last_xgb_fit %>%
   collect_predictions() %>%
-  conf_mat(truth = Diagnosis, estimate = .pred_class)
+  threshold_perf(Diagnosis, .pred_Hepatitis, thresholds = seq(0.0, 1, by = 0.05)) %>% 
+  filter(.metric != "distance") %>%
+  mutate(group = case_when(
+    .metric == "sens" | .metric == "spec" ~ "1",
+    TRUE ~ "2"
+  ))
 
-autoplot(cm, type = "heatmap")
+# find max j-index
+max_j_index_threshold <- threshold_data %>%
+  filter(.metric == "j_index") %>%
+  filter(.estimate == max(.estimate)) %>%
+  pull(.threshold)
+
+# plot metrics v cut-offs
+ggplot(threshold_data, aes(x = .threshold, y = .estimate, color = .metric, alpha = group)) +
+  geom_line(size=1) +
+  #theme_minimal() +
+  #scale_color_viridis_d(end = 0.9) +
+  scale_color_brewer(palette = "Set1") +
+  scale_alpha_manual(values = c(.4, 1), guide = "none") +
+  geom_vline(xintercept = max_j_index_threshold, alpha = .8, color = "grey30", linetype = "longdash") +
+  labs(
+    x = "Probability",
+    y = "Metric Estimate",
+    title = "Choosing the optimal probability cut-off"
+  )
 ```
 
-## Other performance metrics
+j-index is at its maximum at probability cut-off `r max_j_index_threshold`. This value will be chosen for final confusion matrix
+
+## Confusion Matrix
 
 ```{r}
-summary(cm)
+pred_optimized <- last_xgb_fit %>%
+  collect_predictions() %>% 
+  mutate(
+    .pred = make_two_class_pred(
+      estimate = .pred_Hepatitis, 
+      levels = levels(Diagnosis), 
+      threshold = max_j_index_threshold
+    )
+  ) %>%
+  select(Diagnosis, contains(".pred"))
+
+cm_optimized <- pred_optimized %>% 
+  conf_mat(truth = Diagnosis, estimate = .pred)
+
+autoplot(cm_optimized, type = "heatmap")
+```
+
+## All performance metrics
+
+With probability cut-off `r max_j_index_threshold`
+
+```{r}
+summary(cm_optimized)
 ```
 
 ## Conclusion
 
-From a clinical perspective, we should be interested both in high sensitivity and specificity, because we do not want to miss any patients with the sickness and at the same time we do not want to raise alarms falsely too many times. The extent to which we can accept lower levels of both metrics varies in each case and should be discussed.
-This model's sensitivity can be adjusted using a lower than 0.5 probability cut-off.
+From a clinical perspective, we should be interested both in high sensitivity and specificity, because we do not want to miss any patients with the sickness and at the same time we do not want to raise alarms falsely too many times. The extent to which we can accept lower levels of both metrics varies in each case and should be discussed. Current model's performance seems to be sufficiently high and balanced.
 
 ------------------------------------------------------------------------
 
