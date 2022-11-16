@@ -20,64 +20,61 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
-library(tidyverse)
-library(caret)
+library(tidymodels)
 library(skimr)
-#library(GGally)
-library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
-library(ROCR)
-
+library(vip)
+library(probably)
+library(themis)
 ```
 
 # Data set
 
 ```{r read}
-df <- read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddcf", na = c("Unknown", "N/A"))
-
+# upon quick look at the data set
 # if you set smoking_status to factor in col_types, na() won't work
-df$smoking_status <- as_factor(df$smoking_status)
-
-# married
-df$ever_married <- factor(if_else(df$ever_married == "Yes", 1, 0))
-
-# ID
-df$id <- NULL
-
-# for models working properly
-df$stroke <- factor(ifelse(df$stroke == 1, "yes", "no"), levels = c("no", "yes"))
+# remove ID
+# output to a factor
+df <- 
+  readr::read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddcf", na = c("Unknown", "N/A")) %>% 
+  mutate(smoking_status = factor(smoking_status),
+         stroke = factor(ifelse(stroke == 1, "yes", "no"), levels = c("yes", "no"))) %>% 
+  select(-id)
 
 df
 ```
 
-In `smoking_status` 'Unknown' should be changed to NA.
+Further changes to the data set:
 
-Also, it can be ordered: never < formerly < smokes
+- In `smoking_status` 'Unknown' should be changed to NA.
 
-`ever_married` can be re-coded as 0/1 in accordance with `heart_disease` and `hypertension`
+- Also, it can be ordered: never < formerly < smokes
 
-`id` can be removed
+- only `hypertension` and `heart_disease` are dummies.
 
 Other columns seem to be OK
 
 ## Descriptive statistics
 
-```{r describe}
-skim_desc <- skim(df)
+### Factors
 
-skim_desc %>%
+```{r describe}
+skim(df) %>%
   yank("factor")
 ```
 
-- Target 'stroke' is imbalanced!
+- Target 'stroke' is hugely imbalanced!
 
-- 'smoking_status' completeness rate 0.7
+- 'smoking_status' completeness rate is low
 
- - One 'Other' gender to be removed
+ - One 'Other' gender can be removed
+
+
+### Numerics
 
 ```{r filter}
 df <- df %>% filter(gender != "Other")
 
-skim_desc %>%
+skim(df) %>%
   yank("numeric")
 ```
 
@@ -85,15 +82,21 @@ skim_desc %>%
 
 ### How many `smoking_status` in each target class?
 
+Keep in mind that if smoking NAs are mainly in "healthy" class, we can simply remove them
+
 ```{r}
-df %>% group_by(stroke, smoking_status) %>% summarise(N=n())
+df %>% group_by(stroke, smoking_status) %>% 
+  count()
 ```
 
+A lot of them are in "stroke" group, some imputation will be needed.
 
 ### How many skipped BMI values in each target class?
 
 ```{r}
-df %>% filter(is.na(bmi)) %>% group_by(stroke) %>% summarise(n.bmi=n())
+df %>% filter(is.na(bmi)) %>% 
+  group_by(stroke) %>% 
+  count()
 ```
 
 - We have too many NAs in BMI among 'stroke-yes' cases to simply remove them. Some imputation is needed.
@@ -340,6 +343,86 @@ There are several suspicious outliers (like in BMI and glucose). I can safely re
 What is less safe - it's removing non-adults (younger than 20 y.o.). On one hand they provide valid information (age is very important predictor), on the other hand their stroke cases are really sus and a lot of predictors do not have sense (or are obvious NAs) for non-adults (like smoking, marriage status, employment type, residence type etc.); model-based imputation of `smoking_status` in children doesn't have sense as well, I should rather replace with "never smoked".
 
 Since, modelling using all predictors and observations has given me very moderate results (TPR = 1 comes with very high FPR and very low probability cutoff close to 0), I will try various trimming of the data.
+
+# Data preprocessing
+
+## Stratified split
+
+```{r}
+set.seed(124)
+
+data_split <- initial_split(df, prop = 3/4, strata = stroke)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
+```
+
+## Recipe
+
+```{r}
+prep_recipe <- recipe(stroke ~ ., data = df_train) %>%
+  step_impute_bag(bmi, smoking_status) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  #step_impute_bag(all_predictors()) %>% 
+  step_normalize(age, avg_glucose_level, bmi) %>% 
+  step_smote(stroke, over_ratio = 1, seed = 100) %>%
+  check_missing(all_predictors()) %>% 
+  step_zv(all_predictors())
+
+prep_recipe
+```
+
+```{r, include=FALSE, eval=FALSE}
+# the other way is to apply the recipe to your data immediately
+# prep & bake
+train_data <- prep_recipe %>% 
+  prep(training = df_train) %>% 
+  bake(new_data = NULL) # df_train will be processed
+
+# bake test. what about SMOTE?
+test_data <- prep_recipe %>% 
+  prep(training = df_test) %>% 
+  bake(new_data = df_test)
+
+# check oversampling results
+train_data %>% count(stroke) # SMOTE was applied
+test_data %>% count(stroke) # not applied
+```
+
+```{r}
+set.seed(5732)
+
+# number of cores available on Kaggle
+cores <- 4L 
+
+# model specification
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+
+# join model and processing recipe
+rf_cv_wf <- workflow() %>% 
+  add_model(rf_mod) %>% 
+  add_recipe(prep_recipe)
+
+# Stratified, repeated 10-fold cross-validation
+cv_folds <- vfold_cv(df_train, strata = "stroke", v = 10, repeats = 5)
+
+# metrics
+cls_metrics <- metric_set(roc_auc, j_index)
+
+# tune models, this takes time
+rf_res <- tune_grid(rf_cv_wf,
+            grid = 25,
+            resamples = cv_folds,
+            control = control_grid(save_pred = TRUE),
+            metrics = cls_metrics)
+```
+
+
+---
 
 ## Trimming
 
