@@ -32,7 +32,7 @@ library(themis)
 ```{r read}
 # upon quick look at the data set
 # if you set smoking_status to factor in col_types, na() won't work
-# remove ID
+# remove ID, Sex == Other
 # output to a factor
 df <- 
   readr::read_csv("data/healthcare-dataset-stroke-data.csv", col_types = "cfdfffffddcf", na = c("Unknown", "N/A")) %>% 
@@ -357,6 +357,18 @@ df_train <- training(data_split)
 df_test <- testing(data_split)
 ```
 
+## 10-fold CV repeated 10 times
+
+```{r}
+set.seed(345)
+# Stratified, repeated 10-fold cross-validation
+cv_folds <- vfold_cv(df_train, strata = "stroke", v = 10, repeats = 10)
+
+# metrics
+cls_metrics <- metric_set(roc_auc, j_index)
+```
+
+
 ## Recipe
 
 ```{r}
@@ -390,6 +402,81 @@ train_data %>% count(stroke) # SMOTE was applied
 test_data %>% count(stroke) # not applied
 ```
 
+# Penalized Logistic Regression
+
+I add one more step to the recipe - remove correlated predictors (threshold = 0.75)
+
+```{r}
+# recipe for LR
+lr_recipe <- prep_recipe %>% 
+  step_corr(all_predictors(), threshold = 0.75)
+
+# set model type/engine
+lr_mod <- logistic_reg(penalty = tune(), mixture = 1) %>% 
+  set_engine("glmnet")
+
+# define the workflow
+lr_workflow <- 
+  workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(lr_recipe)
+
+# create a tune grid
+lr_reg_grid <- tibble(penalty = 10**seq(-4, 0, length.out = 30))
+
+# train and tune the model
+lr_res <- tune_grid(lr_workflow,
+              grid = lr_reg_grid,
+              resamples = cv_folds,
+              control = control_grid(save_pred = TRUE),
+              metrics = cls_metrics)
+
+autoplot(lr_res)
+```
+
+> The lower the penalty, the smaller the number of predictors used by the model. Such models should be preferred.
+
+## Choose the best model
+
+Here you see top 5 best models based on mean AUC and ranked by penalty score
+
+```{r}
+top_models <-
+  lr_res %>% 
+  show_best("roc_auc", n = 5) %>% 
+  arrange(penalty) 
+
+top_models %>% arrange(penalty)
+```
+
+I will choose a model with the highest mean AUC
+
+```{r}
+lr_best <- lr_res %>% 
+  select_best(metric = "roc_auc")
+
+lr_best
+```
+
+## ROC-AUC of the best model
+
+```{r}
+lr_auc <- 
+  lr_res %>% 
+  collect_predictions(parameters = lr_best) %>% 
+  roc_curve(stroke, .pred_yes) %>% 
+  mutate(model = "Logistic Regression")
+
+autoplot(lr_auc)
+
+```
+
+
+
+# Random Forest
+
+## Tuning
+
 ```{r}
 set.seed(5732)
 
@@ -419,8 +506,45 @@ rf_res <- tune_grid(rf_cv_wf,
             resamples = cv_folds,
             control = control_grid(save_pred = TRUE),
             metrics = cls_metrics)
+
+autoplot(rf_res)
 ```
 
+## Choose the best model
+
+5 best models ranked by mean AUC
+
+```{r}
+rf_res %>% 
+  show_best(metric = "roc_auc")
+```
+
+5 best models ranked by J-index
+
+```{r}
+rf_res %>% 
+  show_best(metric = "j_index")
+```
+
+The best hyper-parameters look like this:
+
+```{r}
+rf_best <- rf_res %>% 
+  select_best(metric = "roc_auc")
+
+rf_best
+```
+
+## ROC-AUC of the best model
+
+```{r}
+rf_auc <- rf_res %>% 
+  collect_predictions(parameters = rf_best) %>% 
+  roc_curve(stroke, .pred_yes) %>% 
+  mutate(model = "Random Forest")
+
+autoplot(rf_auc) # 0.8
+```
 
 ---
 
