@@ -489,18 +489,12 @@ rf_mod <-
   set_engine("ranger", num.threads = cores) %>% 
   set_mode("classification")
 
-# join model and processing recipe
+# workflow
 rf_cv_wf <- workflow() %>% 
   add_model(rf_mod) %>% 
   add_recipe(prep_recipe)
 
-# Stratified, repeated 10-fold cross-validation
-cv_folds <- vfold_cv(df_train, strata = "stroke", v = 10, repeats = 5)
-
-# metrics
-cls_metrics <- metric_set(roc_auc, j_index)
-
-# tune models, this takes time
+# tune models
 rf_res <- tune_grid(rf_cv_wf,
             grid = 25,
             resamples = cv_folds,
@@ -509,6 +503,9 @@ rf_res <- tune_grid(rf_cv_wf,
 
 autoplot(rf_res)
 ```
+
+
+Models with lower `mtry` should be preferred.
 
 ## Choose the best model
 
@@ -544,6 +541,228 @@ rf_auc <- rf_res %>%
   mutate(model = "Random Forest")
 
 autoplot(rf_auc) # 0.8
+```
+
+
+# Boosted trees
+
+## Tune
+
+Using the same basic recipe as for Random Forest
+
+```{r}
+set.seed(732)
+
+# number of cores available on Kaggle
+cores <- 4L 
+
+# model specification
+xgb_mod <- 
+  boost_tree(
+    trees = 50, 
+    mtry = tune(), 
+    min_n = tune(), 
+    tree_depth = tune(), 
+    learn_rate = tune(), 
+    loss_reduction = tune(), 
+    sample_size = tune(), 
+    stop_iter = tune()) %>% 
+  set_engine("xgboost", num.threads = cores) %>% 
+  set_mode("classification")
+
+# workflow
+xgb_cv_wf <- workflow() %>% 
+  add_model(xgb_mod) %>% 
+  add_recipe(prep_recipe)
+
+# tune models, this takes time
+xgb_res <- tune_grid(xgb_cv_wf,
+            grid = 25,
+            resamples = cv_folds,
+            control = control_grid(save_pred = TRUE),
+            metrics = cls_metrics)
+```
+
+## Tuning results
+
+```{r, fig.width=7}
+autoplot(xgb_res)
+```
+
+## Choose the best model
+
+5 best models ranked by mean AUC
+
+```{r}
+xgb_res %>% 
+  show_best(metric = "roc_auc")
+```
+
+5 best models ranked by mean J-index
+
+```{r}
+xgb_res %>% 
+  show_best(metric = "j_index")
+```
+
+The best hyper-parameters look like this:
+
+```{r}
+xgb_best <- xgb_res %>% 
+  select_best(metric = "roc_auc")
+
+xgb_best
+```
+
+## ROC-AUC of the best model
+
+```{r}
+xgb_auc <- xgb_res %>% 
+  collect_predictions(parameters = xgb_best) %>% 
+  roc_curve(stroke, .pred_yes) %>% 
+  mutate(model = "Boosted Trees")
+
+autoplot(xgb_auc)
+```
+
+# Compare Logistic Regression, Random Forest and Boosted Trees models
+
+```{r}
+bind_rows(rf_auc, lr_auc, xgb_auc) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
+  geom_path(lwd = 1, alpha = 0.8) +
+  geom_abline(lty = 3) + 
+  coord_equal() + 
+  scale_color_viridis_d(option = "plasma", end = .6)
+
+```
+
+
+
+# The final fit
+
+Fit the Boosted Trees model with chosen hyper-parameters to the entire training data set and test it on the test data set
+
+```{r}
+# the last model
+last_xgb_mod <- 
+  boost_tree(trees = 50,
+             mtry = xgb_best$mtry, 
+             min_n = xgb_best$min_n, 
+             tree_depth = xgb_best$tree_depth,
+             learn_rate = xgb_best$learn_rate,
+             loss_reduction = xgb_best$loss_reduction,
+             sample_size = xgb_best$sample_size,
+             stop_iter = xgb_best$stop_iter) %>%
+  set_engine("xgboost", num.threads = cores) %>% 
+  set_mode("classification")
+
+# the last workflow
+last_xgb_wf <- 
+  xgb_cv_wf %>% 
+  update_model(last_xgb_mod)
+
+# the last fit
+set.seed(345)
+last_xgb_fit <- 
+  last_xgb_wf %>% 
+  last_fit(data_split)
+```
+
+## Basic performance metrics on the test data set
+
+```{r}
+last_xgb_fit %>% 
+  collect_metrics()
+```
+
+## Variable importance
+
+```{r}
+last_xgb_fit %>% 
+  extract_fit_parsnip() %>% 
+  vip(num_features = 12)
+```
+
+
+## ROC curve on the test data set
+
+```{r}
+last_xgb_fit %>% 
+  collect_predictions() %>% 
+  roc_curve(stroke, .pred_yes) %>% 
+  autoplot()
+
+```
+
+
+## Balancing performance by choosing optimal probability cut-off.
+
+I will use j-index (as explained [here](https://probably.tidymodels.org/articles/where-to-use.html)) to balance performance of the model.
+
+> j-index has a maximum value of 1 when there are no false positives and no false negatives. It can be used as justification of whether or not an increase in the threshold value is worth it. If increasing the threshold results in more of an increase in the specificity than a decrease in the sensitivity, we can see that with j-index.
+
+```{r}
+# collect sens, spec, j-index at various cut-offs
+threshold_data <- 
+  last_xgb_fit %>%
+  collect_predictions() %>%
+  threshold_perf(stroke, .pred_yes, thresholds = seq(0.0, 1, by = 0.05)) %>% 
+  filter(.metric != "distance") %>%
+  mutate(group = case_when(
+    .metric == "sens" | .metric == "spec" ~ "1",
+    TRUE ~ "2"
+  ))
+
+# find max j-index
+max_j_index_threshold <- threshold_data %>%
+  filter(.metric == "j_index") %>%
+  filter(.estimate == max(.estimate)) %>%
+  pull(.threshold)
+
+# plot metrics v cut-offs
+ggplot(threshold_data, aes(x = .threshold, y = .estimate, color = .metric, alpha = group)) +
+  geom_line(size=1) +
+  #theme_minimal() +
+  #scale_color_viridis_d(end = 0.9) +
+  scale_color_brewer(palette = "Set1") +
+  scale_alpha_manual(values = c(.4, 1), guide = "none") +
+  geom_vline(xintercept = max_j_index_threshold, alpha = .8, color = "grey30", linetype = "longdash") +
+  labs(
+    x = "Probability",
+    y = "Metric Estimate",
+    title = "Choosing the optimal probability cut-off"
+  )
+```
+
+j-index is at its maximum at probability cut-off `r max_j_index_threshold`. This value will be chosen for final confusion matrix
+
+## Confusion Matrix
+
+```{r}
+pred_optimized <- last_xgb_fit %>%
+  collect_predictions() %>% 
+  mutate(
+    .pred = make_two_class_pred(
+      estimate = .pred_yes, 
+      levels = levels(stroke), 
+      threshold = max_j_index_threshold
+    )
+  ) %>%
+  select(stroke, contains(".pred"))
+
+cm_optimized <- pred_optimized %>% 
+  conf_mat(truth = stroke, estimate = .pred)
+
+autoplot(cm_optimized, type = "heatmap")
+```
+
+## All performance metrics
+
+With probability cut-off `r max_j_index_threshold`
+
+```{r}
+summary(cm_optimized)
 ```
 
 ---
@@ -690,171 +909,7 @@ head(df_proc)
 
 Now we have 19 variables/features.
 
-# Modelling
 
-## Basic training parameters
-
-5-fold cross validation repeated 10 times will be used.
-
-ROC-optimization will be used (it is better when data is imbalanced).
-
-```{r tune1}
-# for ROC
-fit_ctrl_roc <- trainControl(method = "repeatedcv",
-                           number = 5,
-                           repeats = 10, 
-                           allowParallel = T,
-                           classProbs = T,
-                           summaryFunction = twoClassSummary)
-```
-
-## Split data
-
-The data set is heavily imbalanced, so I will use **S**ynthetic **M**inority **O**versampling **Te**chnique (SMOTE) to create training data set, but not testing one.
-
-```{r split}
-set.seed(1234)
-sample_set <- createDataPartition(y = df_proc$stroke, p = .75, list = FALSE)
-df_train <- df_proc[sample_set,]
-df_test <- df_proc[-sample_set,]
-
-# DMwR::SMOTE for imbalanced data: over=225 and under=150 give me 1:1 ratio
-df_train_smote <- SMOTE(stroke ~ ., data.frame(df_train), perc.over = 1725, perc.under = 106)
-
-df_train_smote %>% group_by(stroke) %>% summarise(N=n())
-```
-
-
-Now the data set is balanced.
-
-# Random Forest
-
-## Training and validation
-
-```{r train.rf}
-set.seed(122)
-
-#THREADS <- 6
-
-#library(doParallel)
-
-#cl <- makePSOCKcluster(THREADS)
-#registerDoParallel(cl)
-
-fit_rf <- train(stroke ~ ., 
-                 data = df_train_smote, 
-                 metric = "ROC", 
-                 method = "rf", 
-                 trControl = fit_ctrl_roc,
-                 tuneGrid = expand.grid(.mtry = c(7.5, 8.5, 9.0, 9.5)),
-                 verbosity = 0,
-                 ntree = 25,
-                 nodesize = 1,
-                 verbose = FALSE)
-
-#stopCluster(cl)
-
-fit_rf
-
-```
-
-
-## Features importance
-
-```{r featimp.rf}
-imp_vars_rf <- varImp(fit_rf)
-
-plot(imp_vars_rf, main = "Variable Importance with RF")
-
-```
-
-
-## Testing
-
-Here's a function to extract data for ROC related plots below.
-
-```{r roc.fun}
-get_roc <- function(fit.obj, testing.df){
-  pred_prob <- predict.train(fit.obj, newdata = testing.df, type = "prob")
-  pred_roc <- prediction(predictions = pred_prob$yes, labels = testing.df$stroke)
-  perf_roc <- performance(pred_roc, measure = "tpr", x.measure = "fpr")
-  return(list(perf_roc, pred_roc))
-}
-```
-
-
-### ROC-curve
-
-```{r roc.rf}
-# calculate ROC
-perf_pred <- get_roc(fit_rf, df_test)
-perf_rf <- perf_pred[[1]]
-pred_rf <- perf_pred[[2]]
-
-# take AUC 
-auc_rf <- round(unlist(slot(performance(pred_rf, measure = "auc"), "y.values")), 3)
-
-# plot
-plot(perf_rf, main = "Random Fores ROC curve", col = "steelblue", lwd = 3)
-abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_rf))
-
-```
-
-
-Ideally, we should be able to predict all stroke cases (TPR = 1.0). 
-
-TPR/FPR cutoff of the model should be adjusted to 'catch' *all* stroke cases.
-
-### TPR, FPR vs Probability cutoff
-
-At which probability cutoff, you'll get TPR = 1.0?
-
-```{r tpr.r}
-# use pred_rf (pred_roc) object
-plot(performance(pred_rf, measure = "tpr", x.measure = "cutoff"),
-     col = "steelblue", 
-     ylab = "Rate", 
-     xlab = "Probability cutoff")
-
-plot(performance(pred_rf, measure = "fpr", x.measure = "cutoff"), 
-     add = T, col = "red")
-
-legend(x = 0.65,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
-
-#abline(v = 0.02, lwd = 2, lty=6)
-
-title("RF")
-```
-
-TPR curve is falling too quickly, while FPR is not falling quickly enough. 
-
-The ideal cutoff should maximize TPR (i.e. Sensitivity/Recall) and minimize FPR.
-
-In this case the ideal cutoff will be extremely low, invalidating the model.
-
-### Confusion matrix
-
-```{r test.rf}
-# predict probabilities
-pred_prob_rf <- predict(fit_rf, newdata = df_test, type = "prob")
-
-# choose your cut-off
-cutoff <- 0.01
-
-# turn probabilities into classes
-pred_class_rf <- ifelse(pred_prob_rf$yes > cutoff, "yes", "no")
-
-pred_class_rf <- as.factor(pred_class_rf)
-
-cm_rf <- confusionMatrix(data = pred_class_rf, 
-                reference = df_test$stroke,
-                mode = "everything",
-                positive = "yes")
-
-cm_rf
-```
 
 Chosen cutoff is `r cutoff`.
 
@@ -871,115 +926,6 @@ This *xgbTree* rendition has 7 parameters.
 I've done standard hyper-parameters grid search for this model before (with `tuneLength=4`).
 
 In the code below an optimal set of hyper-parameters is chosen.
-
-## Training and validation
-
-```{r train.xgb, eval=T}
-set.seed(121)
-
-# the best tune achieved by using tuneLength=4 is as the following:
-# n_rounds = 50
-# max_depth = 4
-# eta = 0.3
-# gamma = 0
-# colsample_bytree = 0.6
-# min_child_weight = 1
-# subsample = 1
-
-fit_xgb <- train(stroke ~ ., 
-                 data = df_train_smote, 
-                 method = "xgbTree",
-                 metric = "ROC", 
-                 trControl = fit_ctrl_roc,
-                 tuneGrid = expand.grid(.nrounds = 50, 
-                             .max_depth = 4,
-                             .eta = 0.25,
-                             .gamma = 0.01,
-                             .colsample_bytree = 0.6,
-                             .min_child_weight = 1,
-                             .subsample = 1),
-                 nthreads = 16,
-                 verbose = FALSE,
-                 verbosity = 0)
-
-fit_xgb$bestTune
-```
-
-
-## Features importance
-
-```{r featimp.xgb, eval=T}
-imp_vars_xgb <- varImp(fit_xgb)
-
-plot(imp_vars_xgb, main = "Variable Importance with XGB")
-```
-
-
-## Testing
-
-### ROC curve
-
-```{r roc.xgb, eval=T}
-# calculate ROC
-perf_pred_xgb <- get_roc(fit_xgb, df_test)
-perf_xgb <- perf_pred_xgb[[1]]
-pred_xgb <- perf_pred_xgb[[2]]
-
-
-# take AUC 
-auc_xgb <- round(unlist(slot(performance(pred_xgb, measure = "auc"), "y.values")), 3)
-
-# plot
-plot(perf_xgb, main = "xgbTree ROC curve", col = "steelblue", lwd = 3)
-abline(a = 0, b = 1, lwd = 3, lty = 2, col = 1)
-legend(x = 0.7, y = 0.3, legend = paste0("AUC = ", auc_xgb))
-
-```
-
-This ROC-curve looks much better than the one from Random Forest. It has a section with TPR=1.0 and FPR < 0.5.
-
-### TPR v FPR
-
-```{r tpr.xgb, eval=T}
-# use pred_xgb object
-plot(performance(pred_xgb, measure = "tpr", x.measure = "cutoff"),
-     col = "steelblue", 
-     ylab = "Rate", 
-     xlab = "Probability cutoff")
-
-plot(performance(pred_xgb, measure = "fpr", x.measure = "cutoff"), 
-     add = T, col = "red")
-
-legend(x = 0.6,y = 0.7, c("TPR (Recall)", "FPR (1-Spec)"), 
-       lty = 1, col = c('steelblue', 'red'), bty = 'n', cex = 1, lwd = 2)
-
-#abline(v = 0.1, lwd = 2, lty=6)
-
-title("xgbTree")
-```
-
-The optimal cutoff here is till very low, with high Sensitivity it will bring low Specificity and PPV.
-
-### Confusion matrix
-
-```{r cm.xgb, eval=T}
-pred_prob_xgb <- predict(fit_xgb, newdata=df_test, type = "prob")
-
-# choose your cut-off
-cutoff <- 0.025
-
-# turn probabilities into classes
-pred_class_xgb <- ifelse(pred_prob_xgb$yes > cutoff, "yes", "no")
-
-pred_class_xgb <- as.factor(pred_class_xgb)
-
-cm_xgb <- confusionMatrix(data = pred_class_xgb, 
-                reference = df_test$stroke,
-                mode = "everything",
-                positive = "yes")
-
-cm_xgb
-```
 
 Chosen cutoff is `r cutoff`.
 
