@@ -630,65 +630,59 @@ autoplot(xgb_auc)
 ```{r}
 bind_rows(rf_auc, lr_auc, xgb_auc) %>% 
   ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
-  geom_path(lwd = 1, alpha = 0.8) +
+  geom_path(lwd = 0.5, alpha = 0.8) +
   geom_abline(lty = 3) + 
   coord_equal() + 
   scale_color_viridis_d(option = "plasma", end = .6)
 
 ```
 
+Based on shape of ROC curve and AUC, I can conclude that  LR performs slightly better than BT and RF. 
 
+I will use LR for the final fit and check its performance on the testing data set.
 
 # The final fit
 
-Fit the Boosted Trees model with chosen hyper-parameters to the entire training data set and test it on the test data set
+Fit the penalized Logistic Regression model with chosen hyper-parameters to the entire training data set and test it on the test data set.
 
 ```{r}
 # the last model
-last_xgb_mod <- 
-  boost_tree(trees = 50,
-             mtry = xgb_best$mtry, 
-             min_n = xgb_best$min_n, 
-             tree_depth = xgb_best$tree_depth,
-             learn_rate = xgb_best$learn_rate,
-             loss_reduction = xgb_best$loss_reduction,
-             sample_size = xgb_best$sample_size,
-             stop_iter = xgb_best$stop_iter) %>%
-  set_engine("xgboost", num.threads = cores) %>% 
+last_mod <- logistic_reg(penalty = lr_best$penalty, mixture = 1) %>% 
+  set_engine("glmnet")  %>% 
   set_mode("classification")
 
-# the last workflow
-last_xgb_wf <- 
-  xgb_cv_wf %>% 
-  update_model(last_xgb_mod)
+# the last workflow: based on LR
+last_wf <- 
+  lr_workflow %>% 
+  update_model(last_mod)
 
 # the last fit
 set.seed(345)
-last_xgb_fit <- 
-  last_xgb_wf %>% 
+last_fit <- 
+  last_wf %>% 
   last_fit(data_split)
 ```
 
-## Basic performance metrics on the test data set
+## Accuracy and AUC of the final fit
 
 ```{r}
-last_xgb_fit %>% 
+last_fit %>% 
   collect_metrics()
 ```
 
 ## Variable importance
 
 ```{r}
-last_xgb_fit %>% 
+last_fit %>% 
   extract_fit_parsnip() %>% 
-  vip(num_features = 12)
+  vip(num_features = 15)
 ```
 
 
 ## ROC curve on the test data set
 
 ```{r}
-last_xgb_fit %>% 
+last_fit %>% 
   collect_predictions() %>% 
   roc_curve(stroke, .pred_yes) %>% 
   autoplot()
@@ -705,7 +699,7 @@ I will use j-index (as explained [here](https://probably.tidymodels.org/articles
 ```{r}
 # collect sens, spec, j-index at various cut-offs
 threshold_data <- 
-  last_xgb_fit %>%
+  last_fit %>%
   collect_predictions() %>%
   threshold_perf(stroke, .pred_yes, thresholds = seq(0.0, 1, by = 0.05)) %>% 
   filter(.metric != "distance") %>%
@@ -731,16 +725,16 @@ ggplot(threshold_data, aes(x = .threshold, y = .estimate, color = .metric, alpha
   labs(
     x = "Probability",
     y = "Metric Estimate",
-    title = "Choosing the optimal probability cut-off"
+    title = "Optimal probability cut-off"
   )
 ```
 
-j-index is at its maximum at probability cut-off `r max_j_index_threshold`. This value will be chosen for final confusion matrix
+j-index is at its maximum at probability cut-off `r max_j_index_threshold`. This value can be chosen to calculate the final confusion matrix.
 
 ## Confusion Matrix
 
 ```{r}
-pred_optimized <- last_xgb_fit %>%
+pred_optimized <- last_fit %>%
   collect_predictions() %>% 
   mutate(
     .pred = make_two_class_pred(
@@ -765,171 +759,7 @@ With probability cut-off `r max_j_index_threshold`
 summary(cm_optimized)
 ```
 
----
-
-## Trimming
-
-Remove BMI > 60
-
-```{r trim, cache=F}
-df_trim <- df %>% filter(bmi <= 60 | is.na(bmi))
-
-skim(df_trim) %>% yank("factor")
-```
-
-4 cases with NA in `smoking_status` are gone.
-
-```{r}
-skim(df_trim) %>% yank("numeric")
-```
-
-## Imputation
-
-### Manual
-
-I will replace all NAs in Children (`work_type`) by 'never smoked'.
-
-```{r}
-df_trim$smoking_status <- ifelse((df_trim$work_type == "children" & is.na(df_trim$smoking_status)), 
-                            "never smoked", as.character(df_trim$smoking_status))
-
-df_trim$smoking_status <- as.factor(df_trim$smoking_status)
-df_trim$smoking_status <- fct_relevel(df_trim$smoking_status, c("never smoked", "formerly smoked", "smokes"))
-
-df_trim %>% filter(work_type == "children") %>% 
-  group_by(smoking_status) %>% 
-  summarise(N = n(), 
-            avg.age = mean(age), 
-            max.age = max(age), 
-            min.age = min(age))
-```
-
-No NAs in children's smoking status anymore.
-
-### Model-based imputation
-
-The rest will be imputed using package [mice](https://www.rdocumentation.org/packages/mice/versions/3.14.0/topics/mice) and two models:
-
-1. Proportional odds model (`polr`) for `smoking_status`
-
-2. Predictive mean matching (`pmm`) for `bmi`
-
-
-```{r, eval = T, message=FALSE, cache=F}
-library(mice)
-
-imp_mice <- mice(df_trim)
-df_imp <- complete(imp_mice)
-
-```
-
-Number of NAs in `bmi`: `r sum(is.na(df_imp$bmi))`
-
-Number of NAs in `smoking_status`: `r sum(is.na(df_imp$smoking_status))`
-
-### Check distributions
-
-I assume that distributions after imputation should not change significantly, i.e. distribution's shape and mean should remain the same.
-
-#### BMI
-
-There was no BMI imputation after trimming BMI > 60
-
-```{r bmi.imp.plot, eval=F}
-bmi_imp_comp <- bind_rows(select(df_trim, bmi, stroke) %>% mutate(type = rep("original", nrow(df_trim))),
-          select(df_imp, bmi, stroke) %>% mutate(type = rep("imputed", nrow(df_imp))))
-
-ggplot(bmi_imp_comp, aes(bmi)) +
-  geom_histogram(aes(fill = type), alpha = 0.8) +
-  facet_grid(cols = vars(stroke))
-```
-
-- Means and shape have not changed, which is good
-
-#### Smoking status
-
-```{r}
-smoke_imp_comp <- bind_rows(select(df_trim, smoking_status, stroke) %>% mutate(type = rep("original", nrow(df_trim))),
-          select(df_imp, smoking_status, stroke) %>% mutate(type = rep("imputed", nrow(df_imp))))
-
-ggplot(smoke_imp_comp, aes(smoking_status)) +
-  geom_bar(aes(fill=type), alpha=0.8, position="dodge") +
-  facet_grid(cols = vars(stroke)) +
-  xlab("")+
-  theme(axis.text.x = element_text(angle=45, vjust = 0.5))
-```
-
-Counts increased proportionally in all `smoking_status` groups
-
-
-## Scaling & Centering
-
-Scale and center all the numeric features (including imputed BMI)
-
-```{r scale}
-# use caret::preProcess()
-# preProcValues <- preProcess(training, method = c("center", "scale"))
-
-df_scaled <- df_imp %>% 
-  select(avg_glucose_level, age, bmi) %>% 
-  scale() %>% 
-  data.frame()
-
-```
-
-
-## Making dummy variables
-
-Some variables (`hypertension`, `heart_disease`, `ever_married`) already have a *dummy* form.
-
-The rest (`gender`, `work_type`, `Residence_type`, `smoking_status`) has to be *dummified*
-
-```{r dummy}
-# select vars
-to_dum <- df_imp %>% select(gender, work_type, Residence_type, smoking_status)
-
-# make an obj
-dummies <- dummyVars(~ ., data = to_dum)
-
-# apply it
-df_dummy <- data.frame(predict(dummies, newdata = to_dum))
-
-# look
-head(df_dummy)
-```
-
-## Joining processed data
-
-Join the scaled vars, the new dummies and the rest together.
-
-```{r join}
-df_proc <- bind_cols(df_scaled, df_dummy, select(df_trim, hypertension, heart_disease, ever_married, stroke))
-head(df_proc)
-```
-
-Now we have 19 variables/features.
-
-
-
-Chosen cutoff is `r cutoff`.
-
-With this cutoff we've got very low Accuracy/Kappa, Specificity and PPV.
-
-Extremely low PPV means that if the model predicts a patient to have a stroke, the chance that this patient *really* has a stroke is ~0.09
-
-Is this model useful then? Not much. Although, Specificity and NPV are high, which means that if the model predicts 'no stroke', then with probability 0.99 there is indeed no stroke.
-
-# Extreme Gradient Boosting: xgbTree
-
-This *xgbTree* rendition has 7 parameters.
-
-I've done standard hyper-parameters grid search for this model before (with `tuneLength=4`).
-
-In the code below an optimal set of hyper-parameters is chosen.
-
-Chosen cutoff is `r cutoff`.
-
-This model performs better then the previous one but not well enough - we still have a lot of false positive results.
+The performance of this model is far from perfect, although it is significantly better than in previous iterations of this notebook.
 
 My guess is that life style is a poor predictor of stroke. In order to get better performing models, we need more data related to physiology, biochemistry or genetics of patients.
 
