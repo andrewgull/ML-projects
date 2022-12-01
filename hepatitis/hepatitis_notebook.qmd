@@ -72,6 +72,142 @@ Numeric variables are mostly complete. I will use imputation later to fill in th
 
 # EDA
 
+## PCA
+
+```{r}
+pca_rec <- recipe(Diagnosis ~., data = df) %>%
+  step_nzv(all_predictors()) %>% 
+  step_impute_median(all_numeric_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors())
+
+pca_prep <- prep(pca_rec)
+
+sdev <- pca_prep$steps[[5]]$res$sdev
+percent_variation <- sdev^2 / sum(sdev^2)
+
+var_df <- data.frame(PC = paste0("PC", 1:length(sdev)),
+                     var_explained = percent_variation,
+                     stringsAsFactors = FALSE)
+
+var_df <- var_df %>% 
+  mutate(var_cum_sum = cumsum(var_explained))
+```
+
+```{r}
+var_df %>%
+  mutate(PC = forcats::fct_inorder(PC)) %>%
+  ggplot(aes(x = PC, y = var_explained)) + 
+  geom_col(aes(fill = var_cum_sum)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+  scale_fill_continuous(type = "viridis")
+```
+
+```{r, fig.height=4, fig.width=12}
+tidied_pca <- tidy(pca_prep, 5)
+
+tidied_pca %>%
+  filter(component %in% paste0("PC", 1:6)) %>%
+  mutate(component = forcats::fct_inorder(component)) %>%
+  ggplot(aes(value, terms, fill = terms)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~component, nrow = 1) +
+  labs(y = NULL)
+```
+
+```{r}
+pca_df <- juice(pca_prep)
+
+pca_df %>%
+  ggplot(aes(PC1, PC2)) +
+  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
+  labs(color = NULL) +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r}
+pca_df %>%
+  ggplot(aes(PC2, PC3)) +
+  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
+  labs(color = NULL) +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r}
+pca_df %>%
+  ggplot(aes(PC1, PC3)) +
+  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
+  labs(color = NULL) +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r, eval=FALSE}
+library(rgl)
+
+
+pca_df <- juice(pca_prep) %>% mutate(color = if_else(Diagnosis == "Hepatitis", "red", "blue"))
+
+
+plot3d(x = pca_df$PC1, y = pca_df$PC2, z = pca_df$PC3,
+       col = pca_df$color,
+       type = "s", 
+       radius = 0.2,
+       xlab = "PC1",
+       ylab = "PC2",
+       zlab = "PC3")
+```
+
+## UMAP
+
+```{r}
+library(embed)
+
+umap_rec <- recipe(Diagnosis ~., data = df) %>%
+  step_nzv(all_predictors()) %>% 
+  step_impute_median(all_numeric_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_normalize(all_predictors()) %>%
+  step_umap(all_predictors(), neighbors = 10)
+
+umap_prep <- prep(umap_rec)
+
+juice(umap_prep) %>%
+  ggplot(aes(UMAP1, UMAP2)) +
+  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
+  labs(color = NULL) +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r}
+library(umap)
+
+umap_rec <- recipe(Diagnosis ~., data = df) %>%
+  step_nzv(all_predictors()) %>% 
+  step_impute_median(all_numeric_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_normalize(all_predictors()) 
+
+umap_prep <- juice(prep(umap_rec))
+
+umap_embed <- umap::umap(d = umap_prep %>% select(-Diagnosis), 
+                         n_neighbors = 20, 
+                         min_dist = 0.1, 
+                         metric = "manhattan", 
+                         n_epochs = 200)
+
+
+umap_tib <- tibble(Diagnosis = umap_prep$Diagnosis,
+                  UMAP1 = umap_embed$layout[, 1],
+                  UMAP2 = umap_embed$layout[, 2])
+
+ggplot(umap_tib, aes(UMAP1, UMAP2)) +
+  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
+  labs(color = NULL) +
+  scale_color_brewer(palette = "Set1")
+```
+
+
 ## Pairs plot
 
 ```{r pairs, fig.width=14, fig.height=10, warning=FALSE, message=FALSE}
