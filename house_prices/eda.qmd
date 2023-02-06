@@ -1,0 +1,72 @@
+---
+title: "House Prices"
+author: "AG"
+format: html
+---
+
+# Libraries
+
+```{r}
+library(themis)
+library(probably)
+library(vip)
+library(skimr)
+library(bestNormalize) # for ord QQ norm
+library(embed) # for UMAP
+library(tidyverse)
+```
+
+# First look at the data 
+
+```{r}
+data_train <- read_csv("data/train.csv") %>% 
+  mutate(across(is_character, ~ as_factor(.x)))
+
+data_test <- read_csv("data/test.csv") %>% 
+  mutate(across(is_character, ~ as_factor(.x)))
+
+dim(data_train)
+```
+
+I should submit price predictions for the test data set
+
+## Factors
+
+```{r}
+data_train %>% 
+  skim() %>% 
+  yank("factor")
+```
+
+Notes on NAs:
+
+- According to `data_description.txt`, NA in `Alley` means "no alley access" - should be replaced by "no access"
+
+- NA in `MasVnrType` means "no data"
+
+- NA in `BsmtQual`means "no basement" - should be replaced
+
+- NA in `BsmtCond` means "no basement" - should be replaced
+
+- NA in `BsmtExposure` means "no basement" - should be replaced
+
+- NA in `BsmtFinType1` means "no basement" - should be replaced
+
+- NA in `BsmtFinType2`means "no basement" - should be replaced
+
+- NA in `Electrical` means "no data"
+
+- NA in `FireplaceQu` means "no fireplace", should be replaced
+
+
+
+
+
+## Numerics
+
+```{r}
+data_train %>% 
+  skim() %>% 
+  yank("numeric")
+```
+
