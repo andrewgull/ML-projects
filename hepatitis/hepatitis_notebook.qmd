@@ -22,6 +22,9 @@ library(stringr) # same idea
 library(themis) # for SMOTE and other recipes for target balancing
 library(vip) # for variable importance
 library(probably) # for performance calibration
+library(bestNormalize) # for ORQ-norm
+library(ggforce) # for validation results
+library(embed) # for UMAP
 ```
 
 # Intro
@@ -72,6 +75,21 @@ Numeric variables are mostly complete. I will use imputation later to fill in th
 
 # EDA
 
+## Functions
+
+```{r}
+plot_validation_results <- function(dat, outcome) {
+  dat %>%
+    # Create the scatterplot matrix
+    ggplot(aes(x = .panel_x, y = .panel_y, color = {{outcome}}, fill = {{outcome}})) +
+    geom_point(alpha = 0.4, size = 1) +
+    geom_autodensity(alpha = .3) +
+    facet_matrix(vars(-{{outcome}}), layer.diag = 2) + 
+    scale_color_brewer(palette = "Set1") + 
+    scale_fill_brewer(palette = "Set1")
+}
+```
+
 ## PCA
 
 ```{r}
@@ -80,11 +98,13 @@ pca_rec <- recipe(Diagnosis ~., data = df) %>%
   step_impute_median(all_numeric_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
   step_normalize(all_predictors()) %>%
+  step_orderNorm(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
   step_pca(all_predictors())
 
 pca_prep <- prep(pca_rec)
 
-sdev <- pca_prep$steps[[5]]$res$sdev
+sdev <- pca_prep$steps[[7]]$res$sdev
 percent_variation <- sdev^2 / sum(sdev^2)
 
 var_df <- data.frame(PC = paste0("PC", 1:length(sdev)),
@@ -105,7 +125,7 @@ var_df %>%
 ```
 
 ```{r, fig.height=4, fig.width=12}
-tidied_pca <- tidy(pca_prep, 5)
+tidied_pca <- tidy(pca_prep, 7)
 
 tidied_pca %>%
   filter(component %in% paste0("PC", 1:6)) %>%
@@ -116,97 +136,37 @@ tidied_pca %>%
   labs(y = NULL)
 ```
 
-```{r}
+```{r, fig.width=6, fig.height=4}
 pca_df <- juice(pca_prep)
 
 pca_df %>%
-  ggplot(aes(PC1, PC2)) +
-  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
-  labs(color = NULL) +
-  scale_color_brewer(palette = "Set1")
-```
-
-```{r}
-pca_df %>%
-  ggplot(aes(PC2, PC3)) +
-  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
-  labs(color = NULL) +
-  scale_color_brewer(palette = "Set1")
-```
-
-```{r}
-pca_df %>%
-  ggplot(aes(PC1, PC3)) +
-  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
-  labs(color = NULL) +
-  scale_color_brewer(palette = "Set1")
-```
-
-```{r, eval=FALSE}
-library(rgl)
-
-
-pca_df <- juice(pca_prep) %>% mutate(color = if_else(Diagnosis == "Hepatitis", "red", "blue"))
-
-
-plot3d(x = pca_df$PC1, y = pca_df$PC2, z = pca_df$PC3,
-       col = pca_df$color,
-       type = "s", 
-       radius = 0.2,
-       xlab = "PC1",
-       ylab = "PC2",
-       zlab = "PC3")
+  plot_validation_results() +
+  ggtitle("PCA")
 ```
 
 ## UMAP
 
-```{r}
-library(embed)
+```{r, fig.width=8, fig.height=6}
+
 
 umap_rec <- recipe(Diagnosis ~., data = df) %>%
   step_nzv(all_predictors()) %>% 
   step_impute_median(all_numeric_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
   step_normalize(all_predictors()) %>%
-  step_umap(all_predictors(), neighbors = 10)
+  step_orderNorm(all_numeric_predictors()) %>% 
+  step_umap(all_predictors(), 
+            neighbors = 15, 
+            min_dist = 0.01, 
+            num_comp = 8, 
+            outcome = "Diagnosis")
 
 umap_prep <- prep(umap_rec)
 
 juice(umap_prep) %>%
-  ggplot(aes(UMAP1, UMAP2)) +
-  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
-  labs(color = NULL) +
-  scale_color_brewer(palette = "Set1")
+  plot_validation_results() +
+  ggtitle("Supervised UMAP")
 ```
-
-```{r}
-library(umap)
-
-umap_rec <- recipe(Diagnosis ~., data = df) %>%
-  step_nzv(all_predictors()) %>% 
-  step_impute_median(all_numeric_predictors()) %>% 
-  step_dummy(all_nominal_predictors()) %>% 
-  step_normalize(all_predictors()) 
-
-umap_prep <- juice(prep(umap_rec))
-
-umap_embed <- umap::umap(d = umap_prep %>% select(-Diagnosis), 
-                         n_neighbors = 20, 
-                         min_dist = 0.1, 
-                         metric = "manhattan", 
-                         n_epochs = 200)
-
-
-umap_tib <- tibble(Diagnosis = umap_prep$Diagnosis,
-                  UMAP1 = umap_embed$layout[, 1],
-                  UMAP2 = umap_embed$layout[, 2])
-
-ggplot(umap_tib, aes(UMAP1, UMAP2)) +
-  geom_point(aes(color = Diagnosis, shape = Diagnosis), alpha = 0.7, size = 2) +
-  labs(color = NULL) +
-  scale_color_brewer(palette = "Set1")
-```
-
 
 ## Pairs plot
 
@@ -740,7 +700,7 @@ Sensitivity reaches 1.0 while Specificity is still quite close to 1.0, which mea
 
 I will use j-index (as explained [here](https://probably.tidymodels.org/articles/where-to-use.html)) to balance performance of the model.
 
->j-index has a maximum value of 1 when there are no false positives and no false negatives. It can be used as justification of whether or not an increase in the threshold value is worth it. If increasing the threshold results in more of an increase in the specificity than a decrease in the sensitivity, we can see that with j-index.
+> j-index has a maximum value of 1 when there are no false positives and no false negatives. It can be used as justification of whether or not an increase in the threshold value is worth it. If increasing the threshold results in more of an increase in the specificity than a decrease in the sensitivity, we can see that with j-index.
 
 ```{r}
 # collect sens, spec, j-index at various cut-offs

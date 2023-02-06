@@ -25,6 +25,9 @@ library(skimr)
 library(vip)
 library(probably)
 library(themis)
+library(bestNormalize)
+library(embed)
+library(ggforce)
 ```
 
 # Data set
@@ -102,6 +105,102 @@ df %>% filter(is.na(bmi)) %>%
 - We have too many NAs in BMI among 'stroke-yes' cases to simply remove them. Some imputation is needed.
 
 # Exploratory Data Analysis
+
+## Useful functions
+
+```{r}
+plot_validation_results <- function(dat, outcome) {
+  dat %>%
+    # Create the scatterplot matrix
+    ggplot(aes(x = .panel_x, y = .panel_y, color = {{outcome}}, fill = {{outcome}})) +
+    geom_point(alpha = 0.4, size = 0.1) +
+    geom_autodensity(alpha = .3) +
+    facet_matrix(vars(-{{outcome}}), layer.diag = 2) + 
+    scale_color_brewer(palette = "Set1") + 
+    scale_fill_brewer(palette = "Set1")
+}
+```
+
+
+## PCA
+
+```{r}
+pca_rec <- recipe(stroke ~., data = df) %>%
+  step_nzv(all_predictors()) %>% 
+  step_impute_bag(bmi, smoking_status) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%  
+  step_normalize(all_predictors()) %>%
+  step_orderNorm(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_pca(all_predictors())
+
+pca_prep <- prep(pca_rec)
+
+sdev <- pca_prep$steps[[8]]$res$sdev
+percent_variation <- sdev^2 / sum(sdev^2)
+
+var_df <- data.frame(PC = paste0("PC", 1:length(sdev)),
+                     var_explained = percent_variation,
+                     stringsAsFactors = FALSE)
+
+var_df <- var_df %>% 
+  mutate(var_cum_sum = cumsum(var_explained))
+
+var_df %>%
+  mutate(PC = forcats::fct_inorder(PC)) %>%
+  ggplot(aes(x = PC, y = var_explained)) + 
+  geom_col(aes(fill = var_cum_sum)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+  scale_fill_continuous(type = "viridis")
+```
+
+```{r, fig.height=4, fig.width=12}
+tidied_pca <- tidy(pca_prep, 8)
+
+tidied_pca %>%
+  filter(component %in% paste0("PC", 1:6)) %>%
+  mutate(component = forcats::fct_inorder(component)) %>%
+  ggplot(aes(value, terms, fill = terms)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~component, nrow = 1) +
+  labs(y = NULL)
+
+```
+
+```{r, fig.width=8, fig.height=8}
+pca_df <- juice(pca_prep)
+
+pca_df %>%
+  plot_validation_results(stroke) +
+  ggtitle("PCA")
+```
+
+
+## UMAP
+
+```{r, fig.width=8, fig.height=6}
+umap_rec <- recipe(stroke ~., data = df) %>%
+  step_nzv(all_predictors()) %>% 
+  step_impute_bag(bmi, smoking_status) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors()) %>%
+  step_orderNorm(all_numeric_predictors()) %>% 
+  step_umap(all_predictors(), 
+            neighbors = 15, 
+            min_dist = 0.6, 
+            num_comp = 8, 
+            outcome = "stroke")
+
+umap_prep <- prep(umap_rec)
+
+juice(umap_prep) %>%
+  plot_validation_results(outcome = stroke) +
+  ggtitle("Supervised UMAP")
+```
+
+It's impossible to see and discern stroke observations! They don't form any clusters.
 
 ## Quick overview
 
