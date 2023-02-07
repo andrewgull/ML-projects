@@ -14,13 +14,13 @@ library(skimr)
 library(bestNormalize) # for ord QQ norm
 library(embed) # for UMAP
 library(tidyverse)
+library(GGally)
 ```
 
 # First look at the data 
 
 ```{r}
-data_train <- read_csv("data/train.csv") %>% 
-  mutate(across(is_character, ~ as_factor(.x)))
+data_train <- read_csv("data/train.csv") 
 
 data_test <- read_csv("data/test.csv") %>% 
   mutate(across(is_character, ~ as_factor(.x)))
@@ -32,10 +32,12 @@ I should submit price predictions for the test data set
 
 ## Factors
 
+Here I will look at character columns and convert them into factors after NA replacement
+
 ```{r}
 data_train %>% 
   skim() %>% 
-  yank("factor")
+  yank("character")
 ```
 
 Notes on NAs:
@@ -58,8 +60,43 @@ Notes on NAs:
 
 - NA in `FireplaceQu` means "no fireplace", should be replaced
 
+- NA in `Garage*` means "no garage" -  should be replaced
+
+- NA in `PoolQC` means "no pool" - should be replaced
+
+- NA in `Fence` means "no fence" - should be replaced
+
+- NA in `MiscFeature` means "no data"
 
 
+### Replacing some NAs and converting to factors
+
+```{r}
+data_train <- data_train %>%
+  mutate_at(
+    vars(
+      BsmtQual,
+      BsmtCond,
+      BsmtExposure,
+      BsmtFinType1,
+      BsmtFinType2,
+      FireplaceQu,
+      GarageType,
+      GarageCond,
+      GarageFinish,
+      GarageCars,
+      GarageQual,
+      PoolQC,
+      Fence
+    ),
+    ~ replace_na(., "No")
+  ) %>%
+  mutate(across(is_character, ~ as_factor(.x)))
+
+data_train %>% 
+  skim() %>% 
+  yank("factor")
+```
 
 
 ## Numerics
@@ -68,5 +105,27 @@ Notes on NAs:
 data_train %>% 
   skim() %>% 
   yank("numeric")
+```
+
+For NA imputation I will use some kind of algorithm
+
+# Corr. matrix
+
+```{r, fig.width=10, fig.height=10}
+cor_matrix <- data_train %>% 
+  select(where(is.numeric)) %>%
+  cor(use = "pairwise.complete.obs", method = "spearman")
+
+corrplot::corrplot(cor_matrix, type = "upper", tl.col = "black", tl.cex = 0.6)
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=10, fig.height=10}
+num_cols <- data_train %>%
+  select(where(is.numeric)) %>% 
+  colnames()
+
+data_train %>% 
+  select(where(is.numeric), -Id) %>% 
+  ggpairs(columns = num_cols[2:10])
 ```
 
