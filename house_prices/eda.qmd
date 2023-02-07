@@ -126,6 +126,6 @@ num_cols <- data_train %>%
 
 data_train %>% 
   select(where(is.numeric), -Id) %>% 
-  ggpairs(columns = num_cols[2:10])
+  ggpairs(columns = num_cols[2:5])
 ```
 
