@@ -25,6 +25,7 @@ library(probably) # for performance calibration
 library(bestNormalize) # for ORQ-norm
 library(ggforce) # for validation results
 library(embed) # for UMAP
+library(tidyposterior) # for model comparison
 ```
 
 # Intro
@@ -77,10 +78,12 @@ Numeric variables are mostly complete. I will use imputation later to fill in th
 
 ## Functions
 
+Some useful functions that I use throughout the notebook
+
 ```{r}
+# Create the scatter plot matrix
 plot_validation_results <- function(dat, outcome) {
   dat %>%
-    # Create the scatterplot matrix
     ggplot(aes(x = .panel_x, y = .panel_y, color = {{outcome}}, fill = {{outcome}})) +
     geom_point(alpha = 0.4, size = 1) +
     geom_autodensity(alpha = .3) +
@@ -88,7 +91,67 @@ plot_validation_results <- function(dat, outcome) {
     scale_color_brewer(palette = "Set1") + 
     scale_fill_brewer(palette = "Set1")
 }
+
+# function to get a name of the best preprocessor from a resampling object
+best_preprocessor <- function(res_obj) {
+  res_obj %>% select_best("roc_auc") %>% pull(.config)
+}
+
+# function to make a df with AUCs from the best preprocessor
+best_aucs <- function(res_obj, model_name){
+  res_obj %>%
+    collect_metrics(summarize = FALSE) %>%
+    filter(.metric == "roc_auc", .config == best_preprocessor(res_obj)) %>%
+    select(id, id2, {{model_name}} := .estimate)
+}
+
+## MK ROC OBJECT ##
+# use with autoplot()
+make_roc <- function(mod_res, title){
+  
+  mod_best <- mod_res %>%
+    select_best(metric = "roc_auc")
+  
+  mod_auc <- mod_res %>% 
+    collect_predictions(parameters = mod_best) %>% 
+    roc_curve(Diagnosis, .pred_Hepatitis) %>% 
+    mutate(model = title)
+  
+  return(mod_auc)
+}
+
 ```
+
+## Pairs plot
+
+```{r pairs, fig.width=14, fig.height=10, warning=FALSE, message=FALSE}
+GGally::ggpairs(df, aes(color = Diagnosis), 
+        upper = list(continuous = GGally::wrap("cor", size = 3.0)),
+        diag = list(continuous = "barDiag"),
+        lower = list(continuous = GGally::wrap("points", alpha = 0.3, size=0.8))) +
+  scale_color_brewer(palette = "Set1", direction = 1) +
+  scale_fill_brewer(palette = "Set1", direction = 1)
+```
+
+## Correlation plot
+
+using Spearman's correlation coefficient
+
+```{r}
+# without resistance
+cor_matrix <- df %>%
+  select(-c(
+    Sex,
+    Diagnosis
+  )) %>%
+  cor(use = "pairwise.complete.obs", method = "spearman")
+
+corrplot::corrplot(cor_matrix, type = "upper", tl.col = "black", tl.cex = 0.6)
+```
+
+AST and GGT are correlated, Protein and Albumin are correlated as well, although these coefficients are quite low (approx. +0.5)
+
+Most likely there is no need to use PCA.
 
 ## PCA
 
@@ -97,14 +160,12 @@ pca_rec <- recipe(Diagnosis ~., data = df) %>%
   step_nzv(all_predictors()) %>% 
   step_impute_median(all_numeric_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
-  step_normalize(all_predictors()) %>%
   step_orderNorm(all_numeric_predictors()) %>% 
-  step_normalize(all_numeric_predictors()) %>% 
   step_pca(all_predictors())
 
 pca_prep <- prep(pca_rec)
 
-sdev <- pca_prep$steps[[7]]$res$sdev
+sdev <- pca_prep$steps[[5]]$res$sdev
 percent_variation <- sdev^2 / sum(sdev^2)
 
 var_df <- data.frame(PC = paste0("PC", 1:length(sdev)),
@@ -124,8 +185,10 @@ var_df %>%
   scale_fill_continuous(type = "viridis")
 ```
 
+Number of principal components is the same as the number of predictors.
+
 ```{r, fig.height=4, fig.width=12}
-tidied_pca <- tidy(pca_prep, 7)
+tidied_pca <- tidy(pca_prep, 5)
 
 tidied_pca %>%
   filter(component %in% paste0("PC", 1:6)) %>%
@@ -136,48 +199,81 @@ tidied_pca %>%
   labs(y = NULL)
 ```
 
-```{r, fig.width=6, fig.height=4}
-pca_df <- juice(pca_prep)
-
-pca_df %>%
-  plot_validation_results() +
+```{r, fig.width=10, fig.height=8}
+pca_prep %>%
+  juice() %>%
+  plot_validation_results(outcome = Diagnosis) +
   ggtitle("PCA")
 ```
 
+Linear classifier might do some job, but not perfect.
+
 ## UMAP
 
-```{r, fig.width=8, fig.height=6}
+Supervised non-linear dimensinality reduction technique.
 
-
+```{r, fig.width=10, fig.height=8}
 umap_rec <- recipe(Diagnosis ~., data = df) %>%
   step_nzv(all_predictors()) %>% 
   step_impute_median(all_numeric_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
-  step_normalize(all_predictors()) %>%
   step_orderNorm(all_numeric_predictors()) %>% 
   step_umap(all_predictors(), 
             neighbors = 15, 
             min_dist = 0.01, 
-            num_comp = 8, 
+            num_comp = 6, 
             outcome = "Diagnosis")
 
-umap_prep <- prep(umap_rec)
+umap_results <- umap_rec %>% prep() %>% juice()
 
-juice(umap_prep) %>%
-  plot_validation_results() +
+umap_results %>%
+  plot_validation_results(outcome = Diagnosis) +
   ggtitle("Supervised UMAP")
 ```
 
-## Pairs plot
+Here we can see that majority of Hepatitis cases are separated from non-Hepatitis
 
-```{r pairs, fig.width=14, fig.height=10, warning=FALSE, message=FALSE}
-GGally::ggpairs(df, aes(color = Diagnosis), 
-        upper = list(continuous = GGally::wrap("cor", size = 2.0)),
-        diag = list(continuous = "barDiag"),
-        lower = list(continuous = GGally::wrap("points", alpha = 0.3, size=0.8))) +
-  scale_color_brewer(palette = "Set1", direction = -1) +
-  scale_fill_brewer(palette = "Set1", direction = -1)
+### 3D plot
+
+```{r}
+library(plotly)
+
+umap3d <- plot_ly(
+  umap_results,
+  x = ~ UMAP1,
+  y = ~ UMAP2,
+  z = ~ UMAP3,
+  color = ~ umap_results$Diagnosis,
+  colors = c('#cf280c', '#1b56f7')
+) %>%
+  add_markers(size = 2,
+              text = ~ umap_results$Diagnosis) %>%
+  layout(scene = list(
+    xaxis = list(title = 'UMAP1'),
+    yaxis = list(title = 'UMAP2'),
+    zaxis = list(title = 'UMAP3')
+  )) 
+
+umap3d
 ```
+
+## ICA
+
+```{r, fig.width=10, fig.height=8}
+ica_rec <- recipe(Diagnosis ~., data = df) %>%
+  step_nzv(all_predictors()) %>% 
+  step_impute_median(all_numeric_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_orderNorm(all_numeric_predictors()) %>% 
+  step_ica(all_numeric_predictors(), num_comp = 8)
+
+data_ica <- ica_rec %>% prep() %>% juice()
+
+data_ica %>% 
+  plot_validation_results(outcome = Diagnosis) + 
+  ggtitle("ICA")
+```
+
 
 ## Age v Diagnosis
 
@@ -186,7 +282,7 @@ ggplot(df, aes(Diagnosis, Age)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   xlab("")
 ```
 
@@ -197,7 +293,7 @@ ggplot(df, aes(Diagnosis, ALB)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   xlab("")
 ```
 
@@ -208,7 +304,7 @@ ggplot(df, aes(Diagnosis, ALP)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   xlab("")
 ```
 
@@ -219,7 +315,7 @@ ggplot(df, aes(Diagnosis, ALT)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   coord_trans(y = "sqrt") +
   xlab("")
 ```
@@ -231,7 +327,7 @@ ggplot(df, aes(Diagnosis, AST)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   coord_trans(y = "sqrt") +
   xlab("")
 ```
@@ -243,7 +339,7 @@ ggplot(df, aes(Diagnosis, BIL)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   coord_trans(y = "sqrt") +
   xlab("")
 ```
@@ -255,7 +351,7 @@ ggplot(df, aes(Diagnosis, CHE)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   xlab("")
 ```
 
@@ -266,7 +362,7 @@ ggplot(df, aes(Diagnosis, CHOL)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   xlab("")
 ```
 
@@ -277,7 +373,7 @@ ggplot(df, aes(Diagnosis, CREA)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.2, size = 0.3) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   coord_trans(y = "sqrt") +
   xlab("")
 ```
@@ -289,7 +385,7 @@ ggplot(df, aes(Diagnosis, GGT)) +
   geom_violin(aes(fill = Diagnosis), alpha = 0.5) +
   geom_jitter(alpha = 0.5, size = 0.6) +
   geom_boxplot(aes(fill = Diagnosis), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", direction = -1) +
+  scale_fill_brewer(palette = "Set1", direction = 1) +
   coord_trans(y = "sqrt") +
   xlab("")
 ```
@@ -303,7 +399,7 @@ sex_n <- df %>% group_by(Diagnosis, Sex) %>% summarise(N = n())
 
 ggplot(sex_n, aes(Diagnosis, N)) +
   geom_col(aes(fill = Sex), position = "fill") +
-  scale_fill_brewer(palette = "Set2", direction = -1) +
+  scale_fill_brewer(palette = "Set2", direction = 1) +
   xlab("") +
   ylab("Proportion")
 ```
@@ -327,6 +423,29 @@ df_train <- training(data_split)
 df_test <- testing(data_split)
 ```
 
+## Folds and metrics
+
+> If a model is poorly calibrated, the ROC curve value might not show
+> diminished performance. However, the J index would be lower for models
+> with pathological distributions for the class probabilities.
+
+> Youden's J statistic is defined as: sens + spec - 1
+
+> The value of the J-index ranges from [0, 1] and is 1 when there are no
+> false positives and no false negatives.
+
+
+Stratified, repeated 10-fold cross-validation will be used.
+
+ROC and J-index will be used as maximization metrics.
+
+```{r}
+# Stratified, repeated 10-fold cross-validation is used to resample the model:
+cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 10) 
+# metrics for imbalanced classes
+cls_metrics <- metric_set(roc_auc, j_index)
+```
+
 ## Preprocessing
 
 -   Impute using median
@@ -340,25 +459,25 @@ df_test <- testing(data_split)
 The preprocessing recipe looks like this:
 
 ```{r}
-my_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
+basic_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
   step_impute_median(all_numeric_predictors()) %>% # I use median bcz not that many observations are missing
   step_dummy(all_nominal_predictors()) %>% # dummy goes before normalisation
   step_normalize(all_predictors()) %>% 
   step_smote(Diagnosis, over_ratio = 1, seed = 100) %>% # original target distribution 399 v 62
   check_missing(all_predictors())
 
-my_recipe
+basic_recipe
 ```
 
 ```{r, include=FALSE, eval=FALSE}
 # the other way is to apply the recipe to your data immediately
 # prep & bake
-train_data <- my_recipe %>% 
+train_data <- basic_recipe %>% 
   prep(training = df_train) %>% 
   bake(new_data = NULL) # df_train will be processed
 
 # bake test. what about SMOTE?
-test_data <- my_recipe %>% 
+test_data <- basic_recipe %>% 
   prep( training = df_test) %>% 
   bake(new_data = df_test)
 
@@ -366,96 +485,6 @@ test_data <- my_recipe %>%
 train_data %>% count(Diagnosis) # SMOTE was applied
 test_data %>% count(Diagnosis) # not applied
 ```
-
-# Tune and fit Random Forest models
-
-Stratified, repeated 10-fold cross-validation will be used.
-
-ROC and J-index will be used as maximization metrics.
-
-> If a model is poorly calibrated, the ROC curve value might not show diminished performance. However, the J index would be lower for models with pathological distributions for the class probabilities.
-
-I will use grid search to tune both RF hyper-parameters: `mtry` and `min_n`
-
-> The `mtry` hyperparameter sets the number of predictor variables that each node in the decision tree "sees" and can learn about, so it can range from 1 to the total number of features present; when `mtry` = all possible features, the model is the same as bagging decision trees. The min_n hyperparameter sets the minimum n to split at any node
-
-```{r}
-set.seed(5732)
-
-# number of cores available on Kaggle
-cores <- 4L 
-
-# model specification
-rf_mod <- 
-  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
-  set_engine("ranger", num.threads = cores) %>% 
-  set_mode("classification")
-
-# join model and processing recipe
-rf_cv_wf <- workflow() %>% 
-  add_model(rf_mod) %>% 
-  add_recipe(my_recipe)
-
-# Stratified, repeated 10-fold cross-validation
-cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 5)
-
-# metrics
-cls_metrics <- metric_set(roc_auc, j_index)
-
-# tune models, this takes time
-rf_res <- tune_grid(rf_cv_wf,
-            grid = 25,
-            resamples = cv_folds,
-            control = control_grid(save_pred = TRUE),
-            metrics = cls_metrics)
-
-```
-
-## Tuning results
-
-```{r}
-autoplot(rf_res)
-```
-
-It is better to choose `mtry` and `min_n` corresponding to higher ROC-AUC *and* J-index.
-
-## Choose the best model
-
-5 best models ranked by mean AUC
-
-```{r}
-rf_res %>% 
-  show_best(metric = "roc_auc")
-```
-
-5 best models ranked by J-index
-
-```{r}
-rf_res %>% 
-  show_best(metric = "j_index")
-```
-
-The best hyper-parameters look like this:
-
-```{r}
-rf_best <- rf_res %>% 
-  select_best(metric = "roc_auc")
-
-rf_best
-```
-
-## ROC-AUC of the best model
-
-```{r}
-rf_auc <- rf_res %>% 
-  collect_predictions(parameters = rf_best) %>% 
-  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
-  mutate(model = "Random Forest")
-
-autoplot(rf_auc)
-```
-
-The ROC-curve looks very good: it reaches both Sensitivity/TPR = 1.0 *and* 1-Specificity/FPR = 1.0
 
 # Tune and fit penalized logistic regression
 
@@ -469,12 +498,12 @@ lr_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
   step_impute_median(all_numeric_predictors()) %>% # I use median bcz not that many observations are missing
   step_dummy(all_nominal_predictors()) %>% # dummy goes before normalisation
   step_normalize(all_predictors()) %>% 
-  step_corr(threshold = 0.75) %>%
-  step_smote(Diagnosis, over_ratio = 1, seed = 100) # original target distribution 399 v 62
+  step_corr(threshold = tune("corr_tune")) %>%
+  step_smote(Diagnosis, over_ratio = 1, seed = 100)
 
 # set model type/engine
 lr_mod <- logistic_reg(penalty = tune(), mixture = 1) %>% 
-  set_engine("glmnet")
+  set_engine("glmnet", num.threads = 4)
 
 # define the workflow
 lr_workflow <- 
@@ -483,19 +512,20 @@ lr_workflow <-
   add_recipe(lr_recipe)
 
 # create a tune grid
-lr_reg_grid <- tibble(penalty = 10**seq(-4, 0, length.out = 30))
-
+# lr_reg_grid <- tibble(penalty = 10**seq(-4, 0, length.out = 30))
+# instead of predefined tune grid, I will use default space-filling grid
 # train and tune the model
 lr_res <- tune_grid(lr_workflow,
-              grid = lr_reg_grid,
+              grid = 30,
               resamples = cv_folds,
               control = control_grid(save_pred = TRUE),
               metrics = cls_metrics)
 ```
 
+
 ## Tuning results
 
-```{r}
+```{r, fig.width=10, fig.height=6}
 autoplot(lr_res)
 ```
 
@@ -506,35 +536,154 @@ autoplot(lr_res)
 Here you see top 5 best models based on mean AUC and ranked by penalty score
 
 ```{r}
-top_models <-
-  lr_res %>% 
-  show_best("roc_auc", n = 5) %>% 
-  arrange(penalty) 
-
-top_models %>% arrange(penalty)
+lr_res %>% 
+  show_best("roc_auc", n = 5)
 ```
 
 I will choose a model with the highest mean AUC
 
-```{r}
-lr_best <- lr_res %>% 
-  select_best(metric = "roc_auc")
-
-lr_best
-```
-
 ## ROC-AUC of the best model
 
 ```{r}
-lr_auc <- 
-  lr_res %>% 
-  collect_predictions(parameters = lr_best) %>% 
-  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
-  mutate(model = "Logistic Regression")
-
-autoplot(lr_auc)
+lr_res %>% 
+  make_roc("LR") %>% 
+  autoplot()
 
 ```
+
+How many predictors left after removing covariates?
+
+'raw' train data contains `r ncol(df_train)` columns.
+
+```{r}
+lr_recipe <- recipe(Diagnosis ~ ., data = df_train) %>%
+  step_impute_median(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_normalize(all_predictors()) %>% 
+  step_corr(threshold = 0.13) %>% # tuned threshold
+  step_smote(Diagnosis, over_ratio = 1, seed = 100)
+
+lr_recipe %>% prep() %>% juice() %>% ncol()
+```
+
+Nothing was removed in this case
+
+# Tune and fit Random Forest models
+
+
+I will use grid search to tune both RF hyper-parameters: `mtry` and `min_n`
+
+> The `mtry` hyperparameter sets the number of predictor variables that each node in the decision tree "sees" and can learn about, so it can range from 1 to the total number of features present; when `mtry` = all possible features, the model is the same as bagging decision trees. The min_n hyperparameter sets the minimum n to split at any node
+
+## Basic preprocessing recipe
+
+```{r}
+set.seed(5732)
+
+# number of cores available on Kaggle
+cores <- 8L 
+
+# model specification
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+
+# join model and processing recipe
+rf_wf <- workflow() %>% 
+  add_model(rf_mod) %>% 
+  add_recipe(basic_recipe)
+
+# tune models, this takes time
+rf_basic_res <- tune_grid(rf_wf,
+            grid = 30,
+            resamples = cv_folds,
+            control = control_grid(save_pred = TRUE),
+            metrics = cls_metrics)
+
+```
+
+### Tuning results
+
+```{r}
+autoplot(rf_basic_res)
+```
+
+It is better to choose `mtry` and `min_n` corresponding to higher ROC-AUC *and* J-index.
+
+### Best models
+
+5 best models ranked by mean AUC
+
+```{r}
+rf_basic_res %>% 
+  show_best(metric = "roc_auc")
+```
+
+5 best models ranked by J-index
+
+```{r}
+rf_basic_res %>% 
+  show_best(metric = "j_index")
+```
+
+### ROC-AUC of the best model
+
+```{r}
+rf_basic_res %>% make_roc("RF") %>% autoplot()
+```
+
+The ROC-curve looks very good: it reaches both Sensitivity/TPR = 1.0 *and* 1-Specificity/FPR = 1.0
+
+Since there is no highly correlated predictors, there is no need in applying LR recipe.
+
+
+## Comparison of j-index based and ROC-based best model configurations
+
+On the tuning plot above you can see that the model with the highest j-index is not the same as the model with the highest ROC.
+
+Do they really differ in performance?
+
+### Posterior distributions of AUC values
+
+I will compare the best models using Bayesian ANOVA
+
+```{r}
+# function to get a name of the best preprocessor from a resampling object
+best_preprocessor <- function(res_obj, metric="roc_auc") {
+  res_obj %>% select_best(metric) %>% pull(.config)
+}
+
+# function to make a df with AUCs from the best preprocessor
+best_models <- function(res_obj, model_name, metric1="roc_auc", metric2="roc_auc"){
+  res_obj %>%
+    collect_metrics(summarize = FALSE) %>%
+    filter(.metric == metric1, .config == best_preprocessor(res_obj, metric=metric2)) %>%
+    select(id, id2, {{model_name}} := .estimate)
+}
+
+rf_best_auc <- best_models(rf_basic_res, model_name = "auc_auc", metric1 = "roc_auc", metric2 = "roc_auc")
+
+rf_best_j <- best_models(rf_basic_res, model_name = "auc_j", metric1 = "roc_auc", metric2 = "j_index")
+
+rf_comp <- list(rf_best_auc, rf_best_j) %>% 
+  reduce(inner_join, by = c("id", "id2")) %>% 
+  unite(id, id, id2)
+
+rf_posterior <- perf_mod(rf_comp, iter = 2000, seed = 100, refresh = 0, chains = 5, cores = 2)
+
+autoplot(rf_posterior)
+```
+
+### Estimate the Difference
+
+```{r}
+auc_diff <- contrast_models(rf_posterior, seed = 100) 
+
+summary(auc_diff)
+```
+
+The difference in AUC between models chosen using J-index or ROC is insignificant.
 
 # Tune and fit Boosted Trees model
 
@@ -563,7 +712,7 @@ xgb_mod <-
 # join model and processing recipe
 xgb_cv_wf <- workflow() %>% 
   add_model(xgb_mod) %>% 
-  add_recipe(my_recipe)
+  add_recipe(basic_recipe)
 
 # Stratified, repeated 10-fold cross-validation
 cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 5)
@@ -573,7 +722,7 @@ cls_metrics <- metric_set(roc_auc, j_index)
 
 # tune models, this takes time
 xgb_res <- tune_grid(xgb_cv_wf,
-            grid = 25,
+            grid = 30,
             resamples = cv_folds,
             control = control_grid(save_pred = TRUE),
             metrics = cls_metrics)
