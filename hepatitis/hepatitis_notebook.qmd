@@ -274,7 +274,6 @@ data_ica %>%
   ggtitle("ICA")
 ```
 
-
 ## Age v Diagnosis
 
 ```{r}
@@ -425,15 +424,11 @@ df_test <- testing(data_split)
 
 ## Folds and metrics
 
-> If a model is poorly calibrated, the ROC curve value might not show
-> diminished performance. However, the J index would be lower for models
-> with pathological distributions for the class probabilities.
+> If a model is poorly calibrated, the ROC curve value might not show diminished performance. However, the J index would be lower for models with pathological distributions for the class probabilities.
 
 > Youden's J statistic is defined as: sens + spec - 1
 
-> The value of the J-index ranges from [0, 1] and is 1 when there are no
-> false positives and no false negatives.
-
+> The value of the J-index ranges from \[0, 1\] and is 1 when there are no false positives and no false negatives.
 
 Stratified, repeated 10-fold cross-validation will be used.
 
@@ -522,7 +517,6 @@ lr_res <- tune_grid(lr_workflow,
               metrics = cls_metrics)
 ```
 
-
 ## Tuning results
 
 ```{r, fig.width=10, fig.height=6}
@@ -569,7 +563,6 @@ lr_recipe %>% prep() %>% juice() %>% ncol()
 Nothing was removed in this case
 
 # Tune and fit Random Forest models
-
 
 I will use grid search to tune both RF hyper-parameters: `mtry` and `min_n`
 
@@ -637,7 +630,6 @@ The ROC-curve looks very good: it reaches both Sensitivity/TPR = 1.0 *and* 1-Spe
 
 Since there is no highly correlated predictors, there is no need in applying LR recipe.
 
-
 ## Comparison of j-index based and ROC-based best model configurations
 
 On the tuning plot above you can see that the model with the highest j-index is not the same as the model with the highest ROC.
@@ -687,13 +679,13 @@ The difference in AUC between models chosen using J-index or ROC is insignifican
 
 # Tune and fit Boosted Trees model
 
-Using the same recipe as for RF
+Using the same recipe as for RF and Bayesian grid search
 
 ```{r}
 set.seed(732)
 
 # number of cores available on Kaggle
-cores <- 4L 
+cores <- 8L 
 
 # model specification
 xgb_mod <- 
@@ -714,27 +706,34 @@ xgb_cv_wf <- workflow() %>%
   add_model(xgb_mod) %>% 
   add_recipe(basic_recipe)
 
-# Stratified, repeated 10-fold cross-validation
-cv_folds <- vfold_cv(df_train, strata = "Diagnosis", v = 10, repeats = 5)
-
-# metrics
-cls_metrics <- metric_set(roc_auc, j_index)
+# extract params for Bayesian grid search
+param_set <- extract_parameter_set_dials(xgb_cv_wf) %>%
+  finalize(x = df_train %>% select(-Diagnosis))
 
 # tune models, this takes time
-xgb_res <- tune_grid(xgb_cv_wf,
-            grid = 30,
-            resamples = cv_folds,
-            control = control_grid(save_pred = TRUE),
-            metrics = cls_metrics)
+xgb_res <- tune_bayes(
+  xgb_cv_wf,
+  param_info = param_set,
+  initial = 20,
+  metrics = cls_metrics,
+  resamples = cv_folds,
+  iter = 50,
+  control = control_bayes(
+    no_improve = 30,
+    verbose = FALSE,
+    save_pred = TRUE,
+    save_workflow = TRUE
+  )
+)
 ```
 
 ## Tuning results
 
-```{r, fig.width=7}
+```{r, fig.width=14, fig.height=4}
 autoplot(xgb_res)
 ```
 
-## Choose the best model
+## Best models
 
 5 best models ranked by mean AUC
 
@@ -762,29 +761,54 @@ xgb_best
 ## ROC-AUC of the best model
 
 ```{r}
-xgb_auc <- xgb_res %>% 
-  collect_predictions(parameters = xgb_best) %>% 
-  roc_curve(Diagnosis, .pred_Hepatitis) %>% 
-  mutate(model = "Boosted Trees")
-
-autoplot(xgb_auc)
+xgb_res %>% make_roc("") %>% autoplot() + ggtitle("XGB")
 ```
 
 # Compare Logistic Regression, Random Forest and Boosted Trees models
 
+## ROCs
+
 ```{r}
-bind_rows(rf_auc, lr_auc, xgb_auc) %>% 
+roc_df <- map2_dfr(list(xgb_res, rf_basic_res, lr_res),
+                            c("XGB", "RF", "LR"), 
+                            function(x, y) make_roc(x, y))
+roc_df %>% 
   ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
-  geom_path(lwd = 1, alpha = 0.8) +
+  geom_path(lwd = 0.5, alpha = 0.8) +
   geom_abline(lty = 3) + 
   coord_equal() + 
-  scale_color_viridis_d(option = "plasma", end = .6)
+  scale_color_brewer(palette="Set1")
 
 ```
 
 As expected, Boosted Trees (BT) model performs (slightly) better than RF, and both BT and RF perform significantly better than LR.
 
-I choose BT to apply it to the test data set.
+## Posterior distributions
+
+```{r}
+mod_comp <-
+  map2(list(xgb_res, rf_basic_res, lr_res),
+       c("xgb", "rf", "lr"),
+       ~ best_aucs(res_obj = .x, model_name = .y)) %>% # model_names is not passed correctly
+  reduce(inner_join, by = c("id", "id2")) %>% 
+  rename("xgb" = .y.x, "rf" = .y.y, "lr" = .y) %>% 
+  unite(id, id, id2)
+
+mod_posterior <- perf_mod(mod_comp, iter = 2000, seed = 100, refresh = 0, chains = 5, cores = 4)
+
+autoplot(mod_posterior)
+```
+
+
+```{r}
+mod_diff <- contrast_models(mod_posterior, seed = 100) 
+
+summary(mod_diff)
+```
+
+Difference between XGB and RF is statistically insignificant.
+
+I choose XGB to apply it to the test data set.
 
 # The final fit
 
