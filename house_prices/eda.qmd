@@ -6,7 +6,7 @@ format: html
 
 # Libraries
 
-```{r}
+```{r, message=FALSE}
 library(themis)
 library(probably)
 library(vip)
@@ -14,18 +14,19 @@ library(skimr)
 library(bestNormalize) # for ord QQ norm
 library(embed) # for UMAP
 library(tidyverse)
+library(tidymodels)
 library(GGally)
 ```
 
 # First look at the data 
 
 ```{r}
-data_train <- read_csv("data/train.csv") 
+data <- read_csv("data/train.csv", show_col_types = FALSE) 
 
-data_test <- read_csv("data/test.csv") %>% 
+data_submission <- read_csv("data/test.csv", show_col_types = FALSE) %>% 
   mutate(across(is_character, ~ as_factor(.x)))
 
-dim(data_train)
+dim(data)
 ```
 
 I should submit price predictions for the test data set
@@ -35,7 +36,7 @@ I should submit price predictions for the test data set
 Here I will look at character columns and convert them into factors after NA replacement
 
 ```{r}
-data_train %>% 
+data %>% 
   skim() %>% 
   yank("character")
 ```
@@ -72,9 +73,10 @@ Notes on NAs:
 ### Replacing some NAs and converting to factors
 
 ```{r}
-data_train <- data_train %>%
+data <- data %>%
   mutate_at(
     vars(
+      Alley,
       BsmtQual,
       BsmtCond,
       BsmtExposure,
@@ -93,7 +95,7 @@ data_train <- data_train %>%
   ) %>%
   mutate(across(is_character, ~ as_factor(.x)))
 
-data_train %>% 
+data %>% 
   skim() %>% 
   yank("factor")
 ```
@@ -109,23 +111,507 @@ data_train %>%
 
 For NA imputation I will use some kind of algorithm
 
-# Corr. matrix
+# Corr. matrix for numerical predictors
 
 ```{r, fig.width=10, fig.height=10}
-cor_matrix <- data_train %>% 
+cor_matrix <- data %>% 
   select(where(is.numeric)) %>%
   cor(use = "pairwise.complete.obs", method = "spearman")
 
-corrplot::corrplot(cor_matrix, type = "upper", tl.col = "black", tl.cex = 0.6)
+corrplot::corrplot(cor_matrix, type = "upper", tl.col = "black", tl.cex = 0.6, method = "ellipse")
 ```
 
-```{r, message=FALSE, warning=FALSE, fig.width=10, fig.height=10}
-num_cols <- data_train %>%
+Some predictors are correlated with each other.
+
+`SalePrice` (outcome) is correlated with quite a lot of the predictors.
+
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=20}
+ data %>% 
   select(where(is.numeric)) %>% 
-  colnames()
-
-data_train %>% 
-  select(where(is.numeric), -Id) %>% 
-  ggpairs(columns = num_cols[2:5])
+  ggpairs()
 ```
+
+
+# Boxplots for factors
+
+```{r, fig.width=18, fig.height=18, warning=FALSE}
+make_plot <- function(sub_df) {
+  ggplot(sub_df, aes(value, SalePrice)) +
+    geom_boxplot(varwidth = T) +
+    geom_violin(alpha = 0.1) +
+    xlab("") +
+    ggtitle((sub_df %>% pull(predictor))[1]) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 0.5, size = 8))
+}
+
+plot_list <- data %>%
+  select(where(is.factor), SalePrice) %>%
+  pivot_longer(cols = where(is.factor),
+               names_to = "predictor",
+               values_to = "value") %>%
+  group_by(predictor) %>%
+  group_split() %>%
+  map(~ make_plot(.x))
+
+ggpubr::ggarrange(plotlist =  plot_list, ncol = 6, nrow = 8)
+```
+
+
+# PCA
+
+## Recipe
+
+```{r}
+pca_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>%
+  update_role(SalePrice, new_role = "outcome") %>% 
+  step_nzv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_knn(all_nominal_predictors()) %>%
+  #step_orderNorm(all_numeric_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_pca(all_predictors(), threshold = .9)
+
+data_pca <- pca_recipe %>% prep() %>% juice()
+
+data_pca <- prep(pca_recipe, retain = TRUE)
+
+data_pca$template %>% dim()
+```
+
+40 PCs explain 0.9 of the variance, that's good
+
+## Explained variation
+
+### Table
+
+```{r}
+sdev <- data_pca$steps[[6]]$res$sdev
+percent_variation <- sdev^2 / sum(sdev^2)
+
+var_df <- data.frame(PC = paste0("PC", 1:length(sdev)),
+                     var_explained = percent_variation,
+                     stringsAsFactors = FALSE)
+
+var_df <- var_df %>% 
+  mutate(var_cum_sum = cumsum(var_explained))
+
+var_df
+```
+
+
+### Plot
+
+40 PCs explaining 0.9 of the variance
+
+```{r, fig.width=12, fig.height=7}
+var_df %>%
+  filter(var_cum_sum < .903) %>% 
+  mutate(PC = forcats::fct_inorder(PC)) %>%
+  ggplot(aes(x = PC, y = var_explained)) + 
+  geom_col(aes(fill = var_cum_sum)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.8, hjust = 0.5, size = 8)) +
+  scale_fill_continuous(type = "viridis")
+```
+
+
+## Scatter plot
+
+```{r, warning=FALSE, fig.width=14}
+library(ggforce)
+
+plot_dimred_results <- function(dat, color_by = SalePrice) {
+  dat %>%
+    select(-Id) %>% 
+    select(contains(c("01", "02", "03")), {{color_by}}) %>% 
+    # Create the scatterplot matrix
+    ggplot(aes(x = .panel_x, y = .panel_y, color = {{color_by}})) +
+    geom_point(alpha = 0.4, size = 1) +
+    geom_autodensity(alpha = .3) +
+    facet_matrix(vars(-{{color_by}}), layer.diag = 2) 
+}
+
+data_pca$template %>%
+  plot_dimred_results() +
+  ggtitle("Principal Component Analysis")
+```
+
+# UMAP
+
+```{r, fig.width=16, warning=FALSE}
+decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>% 
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_knn(all_nominal_predictors()) %>% 
+  step_best_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_corr(threshold = 0.6)
+
+## UMAP
+library(embed)
+
+umap_recipe <- decorq_recipe %>%
+  step_umap(
+    all_numeric_predictors(),
+    num_comp = 10,
+    min_dist = 0.01,
+    neighbors = 25
+  )
+
+data_umap <- prep(umap_recipe, retain = TRUE)
+
+data_umap$template %>% 
+  plot_dimred_results() +
+  ggtitle("UMAP")
+```
+
+
+# Preprocessing
+
+Some predictors are in fact discrete (like `OverallQual`) - will this affect models?
+
+## Data split
+
+```{r}
+library(tidymodels)
+
+set.seed(124)
+
+data_split <- initial_split(data, prop = 0.8)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
+
+dim(df_train)
+```
+
+## Folds and metrics
+
+```{r}
+cv_folds <- vfold_cv(df_train, v = 10, repeats = 10) 
+
+cls_metrics <- metric_set(rmse)
+```
+
+
+## Recipes
+
+### Base, decorr & decorq
+
+```{r}
+base_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>% 
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_knn(all_nominal_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors())
+
+decorr_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>% 
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_knn(all_nominal_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_corr(threshold = 0.7)
+
+decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>% 
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_knn(all_nominal_predictors()) %>% 
+  step_orderNorm(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_corr(threshold = 0.6)
+```
+
+### with feature selection
+
+```{r}
+library(recipeselectors)
+
+featsel_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>% 
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_knn(all_nominal_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_select_vip(all_predictors(), model = rf_mod, outcome = "SalePrice", threshold = 0.9)
+
+```
+
+
+# Modelling
+
+## Benchmark RF
+
+base recipe + space-filled grid search
+
+```{r}
+rf_mod <- rand_forest(mtry = tune(),
+                      min_n = tune(),
+                      trees = 1000) %>%
+  set_engine("ranger", num.threads = 8) %>%
+  set_mode("regression")
+
+rf_wf <- workflow() %>%
+  add_model(rf_mod) %>%
+  add_recipe(base_recipe)
+
+rf_base_res <- rf_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = cls_metrics
+  )
+
+```
+
+Autoplot
+
+```{r}
+autoplot(rf_base_res)
+```
+
+```{r}
+rf_best <- rf_base_res %>% select_best()
+rf_base_res %>% show_best()
+```
+
+## Benchmark LR
+
+### decorr recipe
+
+```{r}
+lr_mod <- linear_reg(penalty = tune(),
+                      mixture = tune()) %>%
+  set_engine("glmnet", num.threads = 8) %>%
+  set_mode("regression")
+
+lr_wf <- workflow() %>%
+  add_model(lr_mod) %>%
+  add_recipe(decorr_recipe)
+
+lr_decorr_res <- lr_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = cls_metrics
+  )
+
+```
+
+```{r}
+autoplot(lr_decorr_res)
+```
+
+```{r}
+lr_best <- lr_decorr_res %>% select_best()
+
+show_best(lr_decorr_res)
+```
+
+### PCA recipe
+
+```{r}
+lr_pca_wf <- workflow() %>%
+  add_model(lr_mod) %>%
+  add_recipe(pca_recipe)
+
+lr_pca_res <- lr_pca_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = cls_metrics
+  )
+
+autoplot(lr_pca_res)
+```
+
+## MLP
+
+### PCA
+
+```{r}
+mlp_mod <-
+  mlp(hidden_units = tune(),
+      penalty = tune(),
+      epochs = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("nnet", num.threads = 8)
+
+mlp_wf <- workflow() %>% 
+  add_model(mlp_mod) %>% 
+  add_recipe(pca_recipe)
+
+mlp_res <- mlp_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = cls_metrics
+  )
+```
+
+### Decorq NA
+
+```{r}
+decorq_na_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>% 
+  step_nzv(all_predictors()) %>%
+  step_filter_missing(all_predictors()) %>% 
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_knn(all_nominal_predictors()) %>% 
+  step_orderNorm(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_lincomb(all_predictors()) %>% 
+  step_corr(threshold = 0.7)
+
+decorq_na_recipe %>% prep() %>% juice() %>% dim()
+```
+
+```{r}
+mlp_decorq_wf <- workflow() %>% 
+  add_model(mlp_mod) %>% 
+  add_recipe(decorq_na_recipe)
+
+mlp_decorq_res <- mlp_decorq_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = cls_metrics
+  )
+
+mlp_decorq_res %>% show_best("rmse")
+```
+
+
+## XGB
+
+### Base recipe + win-loss search
+
+```{r}
+library(finetune)
+
+boost_tree_xgboost_spec <-
+  boost_tree(
+    tree_depth = tune(),
+    trees = tune(),
+    learn_rate = tune(),
+    min_n = tune(),
+    loss_reduction = tune(),
+    sample_size = tune(),
+    stop_iter = tune()
+  ) %>%
+  set_engine('xgboost', num.threads = 8) %>%
+  set_mode('regression')
+
+xgb_wf <- workflow() %>% 
+  add_model(boost_tree_xgboost_spec) %>% 
+  add_recipe(base_recipe)
+
+param_set <- extract_parameter_set_dials(xgb_wf) %>%
+    finalize(x = df_train %>% select(-SalePrice))
+
+xgb_wl_res <- xgb_wf %>%
+    tune_race_win_loss(
+      param_info = param_set,
+      resamples = cv_folds,
+      grid = 20,
+      control = control_race(
+        verbose_elim = TRUE,
+        save_pred = TRUE,
+        save_workflow = TRUE,
+        burn_in = 10
+      )
+    )
+
+plot_race(xgb_wl_res)
+```
+
+```{r}
+xgb_wl_res %>% show_best("rmse")
+```
+
+### Base recipe + Bayesian search from win-loss resamples
+
+I will use `xgb_wl_res` as initial points for Bayesian grid search. 
+
+```{r}
+xgb_bwl_res <- xgb_wf %>%
+    tune_bayes(
+      resamples = cv_folds,
+      param_info = param_set,
+      initial = xgb_wl_res,
+      iter = 50,
+      metrics = cls_metrics,
+      control = control_bayes(
+        no_improve = 20,
+        verbose = FALSE,
+        save_pred = TRUE,
+        save_workflow = TRUE
+      )
+    )
+```
+
+```{r}
+xgb_bwl_res %>% show_best("rmse")
+```
+
+
+### Base recipe + Bayesian search
+
+```{r}
+param_set <- extract_parameter_set_dials(xgb_wf) %>%
+    finalize(x = df_train %>% select(-SalePrice))
+
+xgb_b_res <- xgb_wf %>%
+    tune_bayes(
+      resamples = cv_folds,
+      param_info = param_set,
+      initial = 20,
+      iter = 50,
+      metrics = cls_metrics,
+      control = control_bayes(
+        no_improve = 20,
+        verbose = FALSE,
+        save_pred = TRUE,
+        save_workflow = TRUE
+      )
+    )
+
+xgb_b_res %>% show_best("rmse")
+```
+
+# Compare std err
+
+```{r}
+best_rmse <- function(res_obj, name){
+  res_obj %>% 
+    show_best("rmse") %>% 
+    select(mean, std_err) %>%
+    mutate(model = name) %>% 
+    slice_head(n = 1)
+}
+
+best_models_rmse <- map2_dfr(list(rf_base_res, lr_decorr_res, lr_pca_res, mlp_res, xgb_wl_res, xgb_b_res, xgb_bwl_res), c("RF","LR-decorr", "LR-pca", "MLP-pca", "XGB-wl", "XGB-b", "XGB-bwl"), ~best_rmse(.x, .y))
+
+ggplot(best_models_rmse, aes(y=mean, x=model, ymin = mean - std_err, ymax = mean + std_err)) +
+  geom_errorbar(aes(color = model)) +
+  geom_point(aes(y = mean, color = model))
+```
+
 
