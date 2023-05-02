@@ -15,10 +15,13 @@ library(bestNormalize) # for ord QQ norm
 library(embed) # for UMAP
 library(tidyverse)
 library(tidymodels)
-library(GGally)
+library(finetune) # fro win-loss tuning
+#library(GGally)
 ```
 
-# First look at the data 
+# EDA
+
+## First look at the data 
 
 ```{r}
 data <- read_csv("data/train.csv", show_col_types = FALSE) 
@@ -104,7 +107,7 @@ data %>%
 ## Numerics
 
 ```{r}
-data_train %>% 
+data %>% 
   skim() %>% 
   yank("numeric")
 ```
@@ -162,7 +165,7 @@ ggpubr::ggarrange(plotlist =  plot_list, ncol = 6, nrow = 8)
 ## Recipe
 
 ```{r}
-pca_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+pca_recipe <- recipe(SalePrice ~ ., data = data) %>%
   update_role(Id, new_role = "ID") %>%
   update_role(SalePrice, new_role = "outcome") %>% 
   step_nzv(all_predictors()) %>% 
@@ -205,7 +208,7 @@ var_df
 
 40 PCs explaining 0.9 of the variance
 
-```{r, fig.width=12, fig.height=7}
+```{r, fig.width=6, fig.height=3}
 var_df %>%
   filter(var_cum_sum < .903) %>% 
   mutate(PC = forcats::fct_inorder(PC)) %>%
@@ -218,7 +221,7 @@ var_df %>%
 
 ## Scatter plot
 
-```{r, warning=FALSE, fig.width=14}
+```{r, warning=FALSE, fig.width=7}
 library(ggforce)
 
 plot_dimred_results <- function(dat, color_by = SalePrice) {
@@ -239,8 +242,8 @@ data_pca$template %>%
 
 # UMAP
 
-```{r, fig.width=16, warning=FALSE}
-decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+```{r, fig.width=5, warning=FALSE}
+decorq_recipe <- recipe(SalePrice ~ ., data = data) %>%
   update_role(Id, new_role = "ID") %>% 
   step_nzv(all_predictors()) %>%
   step_impute_mean(all_numeric_predictors()) %>% 
@@ -287,10 +290,16 @@ df_test <- testing(data_split)
 dim(df_train)
 ```
 
+
+```{r}
+dim(df_test)
+```
+
+
 ## Folds and metrics
 
 ```{r}
-cv_folds <- vfold_cv(df_train, v = 10, repeats = 10) 
+cv_folds <- vfold_cv(df_train, v = 5, repeats = 10) 
 
 cls_metrics <- metric_set(rmse)
 ```
@@ -316,7 +325,7 @@ decorr_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_impute_knn(all_nominal_predictors()) %>% 
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>% 
-  step_corr(threshold = 0.7)
+  step_corr(threshold = tune("corr_tune"))
 
 decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>% 
@@ -325,15 +334,15 @@ decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_impute_knn(all_nominal_predictors()) %>% 
   step_orderNorm(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>% 
-  step_corr(threshold = 0.6)
+  step_corr(threshold = tune("corr_tune"))
 ```
 
-### with feature selection
+### With feature selection
 
 ```{r}
 library(recipeselectors)
 
-featsel_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+feat_sel_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>% 
   step_nzv(all_predictors()) %>%
   step_impute_mean(all_numeric_predictors()) %>% 
@@ -347,21 +356,24 @@ featsel_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
 
 # Modelling
 
-## Benchmark RF
+## Basic RF
 
-base recipe + space-filled grid search
+basic pre-processing recipe & space-filled grid search
 
 ```{r}
+# model specification
 rf_mod <- rand_forest(mtry = tune(),
                       min_n = tune(),
                       trees = 1000) %>%
   set_engine("ranger", num.threads = 8) %>%
   set_mode("regression")
 
+# model workflow
 rf_wf <- workflow() %>%
   add_model(rf_mod) %>%
   add_recipe(base_recipe)
 
+# tuning and resampling
 rf_base_res <- rf_wf %>%
   tune_grid(
     grid = 20,
@@ -373,31 +385,37 @@ rf_base_res <- rf_wf %>%
 
 ```
 
-Autoplot
+### Autoplot
 
 ```{r}
 autoplot(rf_base_res)
 ```
+
+### Best models
 
 ```{r}
 rf_best <- rf_base_res %>% select_best()
 rf_base_res %>% show_best()
 ```
 
-## Benchmark LR
+## Basic LR
 
-### decorr recipe
+### Decorrelated predictors
 
 ```{r}
+
+# model specs
 lr_mod <- linear_reg(penalty = tune(),
                       mixture = tune()) %>%
   set_engine("glmnet", num.threads = 8) %>%
   set_mode("regression")
 
+# model's workflow
 lr_wf <- workflow() %>%
   add_model(lr_mod) %>%
   add_recipe(decorr_recipe)
 
+# tuning and resampling
 lr_decorr_res <- lr_wf %>%
   tune_grid(
     grid = 20,
@@ -409,14 +427,20 @@ lr_decorr_res <- lr_wf %>%
 
 ```
 
+#### Autoplot
+
 ```{r}
 autoplot(lr_decorr_res)
 ```
 
-```{r}
-lr_best <- lr_decorr_res %>% select_best()
+#### Best models
 
-show_best(lr_decorr_res)
+```{r}
+lr_best <- lr_decorr_res %>% 
+  select_best()
+
+lr_decorr_res %>% 
+  show_best()
 ```
 
 ### PCA recipe
@@ -435,8 +459,20 @@ lr_pca_res <- lr_pca_wf %>%
     metrics = cls_metrics
   )
 
+```
+
+#### Autoplot
+
+```{r}
 autoplot(lr_pca_res)
 ```
+
+#### Best models
+
+```{r}
+show_best(lr_pca_res)
+```
+
 
 ## MLP
 
@@ -462,9 +498,18 @@ mlp_res <- mlp_wf %>%
                            save_workflow = TRUE),
     metrics = cls_metrics
   )
+
+autoplot(mlp_res)
 ```
 
-### Decorq NA
+```{r}
+show_best(mlp_res)
+```
+
+
+### Decorrelated predictors & ORQ transformation
+
+#### Recipe
 
 ```{r}
 decorq_na_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
@@ -476,10 +521,10 @@ decorq_na_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_orderNorm(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_lincomb(all_predictors()) %>% 
-  step_corr(threshold = 0.7)
-
-decorq_na_recipe %>% prep() %>% juice() %>% dim()
+  step_corr(threshold = tune("corr_tune"))
 ```
+
+#### Tuning
 
 ```{r}
 mlp_decorq_wf <- workflow() %>% 
@@ -495,62 +540,143 @@ mlp_decorq_res <- mlp_decorq_wf %>%
     metrics = cls_metrics
   )
 
-mlp_decorq_res %>% show_best("rmse")
 ```
 
+#### Autoplot
+
+```{r}
+autoplot(mlp_decorq_res)
+```
+
+#### Best models
+
+```{r}
+mlp_decorq_res %>% show_best()
+```
 
 ## XGB
 
-### Base recipe + win-loss search
+### Boosted trees specification
 
 ```{r}
-library(finetune)
+# xgb_spec <-
+#   boost_tree(
+#     tree_depth = tune(),
+#     trees = tune(),
+#     learn_rate = tune(),
+#     min_n = tune(),
+#     loss_reduction = tune(),
+#     sample_size = tune(),
+#     stop_iter = tune()
+#   ) %>%
+#   set_engine('xgboost', num.threads = 8) %>%
+#   set_mode('regression')
 
-boost_tree_xgboost_spec <-
-  boost_tree(
-    tree_depth = tune(),
-    trees = tune(),
-    learn_rate = tune(),
-    min_n = tune(),
-    loss_reduction = tune(),
-    sample_size = tune(),
-    stop_iter = tune()
-  ) %>%
-  set_engine('xgboost', num.threads = 8) %>%
-  set_mode('regression')
+xgb_spec <- boost_tree(
+  trees = 50,
+  mtry = tune(),
+  min_n = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  loss_reduction = tune(),
+  sample_size = tune(),
+  stop_iter = tune()
+) %>%
+  set_engine("xgboost", num.threads = 8) %>%
+  set_mode("regression")
+```
 
+
+### Basic preprocessing and win-loss grid search
+
+```{r}
 xgb_wf <- workflow() %>% 
-  add_model(boost_tree_xgboost_spec) %>% 
+  add_model(xgb_spec) %>% 
   add_recipe(base_recipe)
 
 param_set <- extract_parameter_set_dials(xgb_wf) %>%
-    finalize(x = df_train %>% select(-SalePrice))
+  finalize(x = df_train %>% select(-SalePrice))
 
 xgb_wl_res <- xgb_wf %>%
-    tune_race_win_loss(
-      param_info = param_set,
-      resamples = cv_folds,
-      grid = 20,
-      control = control_race(
-        verbose_elim = TRUE,
-        save_pred = TRUE,
-        save_workflow = TRUE,
-        burn_in = 10
-      )
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 40,
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
     )
+  )
 
 plot_race(xgb_wl_res)
 ```
+
+#### Autoplot
+
+```{r}
+autoplot(xgb_wl_res)
+```
+
+
+#### Best models
 
 ```{r}
 xgb_wl_res %>% show_best("rmse")
 ```
 
-### Base recipe + Bayesian search from win-loss resamples
 
-I will use `xgb_wl_res` as initial points for Bayesian grid search. 
+### Decorrelated recipe and win-loss search
 
 ```{r}
+# xgb specification is the same as above
+xgb_wf <- workflow() %>% 
+  add_model(xgb_spec) %>% 
+  add_recipe(decorr_recipe)
+
+param_set <- extract_parameter_set_dials(xgb_wf) %>%
+    finalize(x = df_train %>% select(-SalePrice))
+
+xgb_dec_wlres <- xgb_wf %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 20,
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+plot_race(xgb_dec_wl_res)
+```
+
+#### Autoplot
+
+```{r}
+autoplot(xgb_dec_wlres)
+```
+
+
+#### Best models
+
+```{r}
+xgb_dec_wlres %>% show_best("rmse")
+```
+
+
+### Basic recipe and Bayesian search from win-loss resamples
+
+Here, I will use the winning combinations of hyper-parameters (`xgb_wl_res`) as starting points for Bayesian grid search. 
+
+```{r, eval=FALSE}
+xgb_wf <- workflow() %>% 
+  add_model(xgb_spec) %>% 
+  add_recipe(base_recipe)
+
 xgb_bwl_res <- xgb_wf %>%
     tune_bayes(
       resamples = cv_folds,
@@ -567,23 +693,29 @@ xgb_bwl_res <- xgb_wf %>%
     )
 ```
 
-```{r}
+```{r, eval=FALSE}
 xgb_bwl_res %>% show_best("rmse")
 ```
 
 
-### Base recipe + Bayesian search
+### Basic recipe and full Bayesian search
+
+30 iterations
 
 ```{r}
+xgb_wf <- workflow() %>% 
+  add_model(xgb_spec) %>% 
+  add_recipe(base_recipe)
+
 param_set <- extract_parameter_set_dials(xgb_wf) %>%
     finalize(x = df_train %>% select(-SalePrice))
 
-xgb_b_res <- xgb_wf %>%
+xgb_bres <- xgb_wf %>%
     tune_bayes(
       resamples = cv_folds,
       param_info = param_set,
       initial = 20,
-      iter = 50,
+      iter = 30,
       metrics = cls_metrics,
       control = control_bayes(
         no_improve = 20,
@@ -593,12 +725,57 @@ xgb_b_res <- xgb_wf %>%
       )
     )
 
-xgb_b_res %>% show_best("rmse")
+xgb_bres %>% show_best("rmse")
 ```
 
-# Compare std err
+#### Autoplot
+
+```{r, fig.width=5}
+autoplot(xgb_bres)
+```
+
+
+### Decorrelated recipe and Bayesian search
+
+30 iterations
 
 ```{r}
+xgb_wf <- workflow() %>% 
+  add_model(xgb_spec) %>% 
+  add_recipe(decorr_recipe)
+
+param_set <- extract_parameter_set_dials(xgb_wf) %>%
+    finalize(x = df_train %>% select(-SalePrice))
+
+xgb_dec_bres <- xgb_wf %>%
+    tune_bayes(
+      resamples = cv_folds,
+      param_info = param_set,
+      initial = 20,
+      iter = 30,
+      metrics = cls_metrics,
+      control = control_bayes(
+        no_improve = 20,
+        verbose = FALSE,
+        save_pred = TRUE,
+        save_workflow = TRUE
+      )
+    )
+
+xgb_dec_bres %>% show_best("rmse")
+```
+
+#### Autoplot
+
+```{r, fig.width=7}
+autoplot(xgb_dec_bres)
+```
+
+
+# Compare mean RMSE between different model specifications
+
+```{r}
+# function to retrieve the best HP combination based on mean RMSE
 best_rmse <- function(res_obj, name){
   res_obj %>% 
     show_best("rmse") %>% 
@@ -607,11 +784,172 @@ best_rmse <- function(res_obj, name){
     slice_head(n = 1)
 }
 
-best_models_rmse <- map2_dfr(list(rf_base_res, lr_decorr_res, lr_pca_res, mlp_res, xgb_wl_res, xgb_b_res, xgb_bwl_res), c("RF","LR-decorr", "LR-pca", "MLP-pca", "XGB-wl", "XGB-b", "XGB-bwl"), ~best_rmse(.x, .y))
+# make a data frame
+best_models_rmse <-
+  map2_dfr(
+    list(
+      rf_base_res,
+      lr_decorr_res,
+      lr_pca_res,
+      mlp_res,
+      mlp_decorq_res,
+      xgb_wl_res,
+      xgb_bres,
+      xgb_dec_bres
+    ),
+    c(
+      "RF basic",
+      "LR no corr",
+      "LR pca",
+      "MLP pca",
+      "MLP no corr ORQ",
+      "XGB wl",
+      "XGB Bayes",
+      "XGB no corr Bayes"
+    ),
+    ~ best_rmse(.x, .y)
+  )
 
-ggplot(best_models_rmse, aes(y=mean, x=model, ymin = mean - std_err, ymax = mean + std_err)) +
+ggplot(best_models_rmse,
+       aes(
+         y = mean,
+         x = model,
+         ymin = mean - std_err,
+         ymax = mean + std_err
+       )) +
   geom_errorbar(aes(color = model)) +
-  geom_point(aes(y = mean, color = model))
+  geom_point(aes(y = mean, color = model)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.95, hjust=1)) +
+  xlab("") +
+  ylab("RMSE")
 ```
 
+## Bayesian ANOVA
+
+```{r}
+library(tidyposterior)
+
+# function to get a name of the best preprocessor from your resample
+best_preprocessor <- function(res_obj) {
+  res_obj %>% 
+    select_best("rmse") %>% 
+    pull(.config)
+}
+
+# function to make a df with AUCs from the best preproc
+best_rmse <- function(res_obj, model_name){
+  res_obj %>%
+    collect_metrics(summarize = FALSE) %>%
+    filter(.metric == "rmse", .config == best_preprocessor(res_obj)) %>%
+    select(id, id2, {{model_name}} := .estimate)
+}
+
+# generate distributions
+resampling_comparison <-
+  map2(list(rf_base_res, lr_decorr_res, xgb_wl_res),
+       c("RF", "LR", "XGB wl"),
+       ~ best_rmse(res_obj = .x, model_name = .y)) %>% 
+  reduce(inner_join, by = c("id", "id2")) %>% 
+  rename("rf" = .y.x, "lr" = .y.y, "xgb" = .y) %>% 
+  unite(id, id, id2)
+
+# make ANOVA
+resampling_posterior <-
+  perf_mod(
+    resampling_comparison,
+    iter = 10000,
+    seed = 100,
+    refresh = 0,
+    chains = 4,
+    cores = 4
+  )
+
+# plot
+autoplot(resampling_posterior)
+```
+
+### Estimate the difference
+
+```{r}
+res_diff <- contrast_models(resampling_posterior, seed = 100) 
+
+summary(res_diff)
+```
+
+XGB has significantly better RMSE
+
+# Final fit
+
+```{r}
+# tuned recipe
+# best_corr <- xgb_wl_res %>% 
+#   select_best("rmse") %>% 
+#   pull(corr_tune)
+
+# ncorr_recipe_tuned <- recipe(resistance ~ ., data = df_train) %>%
+#   update_role(strain, new_role = "ID") %>% 
+#   step_nzv(all_predictors()) %>%
+#   step_normalize(all_numeric_predictors()) %>%
+#   step_dummy(all_nominal_predictors()) %>%
+#   step_corr(threshold = best_corr) %>% # tuned threshold
+#   step_smote(resistance, over_ratio = 1, seed = 100)
+
+# model spec
+#xgb_mod <- set_model("bt", 8)
+
+xgb_spec <- boost_tree(
+  trees = 50,
+  mtry = tune(),
+  min_n = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  loss_reduction = tune(),
+  sample_size = tune(),
+  stop_iter = tune()
+) %>%
+  set_engine("xgboost", num.threads = 8) %>%
+  set_mode("regression")
+
+# main or ncorr?
+best_mod <- xgb_wl_res %>% 
+  select_best("rmse")
+
+# use hyper parameters of the best model
+last_mod <-
+  boost_tree(
+    mtry = best_mod$mtry,
+    min_n = best_mod$min_n,
+    tree_depth = best_mod$tree_depth,
+    learn_rate = best_mod$learn_rate,
+    loss_reduction = best_mod$loss_reduction,
+    sample_size = best_mod$sample_size,
+    stop_iter = best_mod$stop_iter
+  ) %>% 
+  set_engine("xgboost", num.threads=8) %>% 
+  set_mode("regression") 
+
+# this was the XGB workflow
+xgb_wf <- workflow() %>% 
+  add_model(xgb_spec) %>% 
+  add_recipe(base_recipe) # the recipe here should be the one that was used for this model
+
+# the last workflow
+last_wf <- 
+  xgb_wf %>%  
+  update_model(last_mod)
+
+# the last fit
+set.seed(345)
+
+final_fit <- 
+  last_wf %>% 
+  last_fit(data_split)
+
+# emulates the process where, after determining the best model, 
+# the final fit on the entire training set is needed 
+# and is then evaluated on the test set.
+
+final_fit %>% 
+  collect_metrics()
+```
 
