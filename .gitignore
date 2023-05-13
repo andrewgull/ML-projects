@@ -1,5 +1,6 @@
-workspace.RData
+*.RData
 .Rproj.user
-**/*.zip
-**/.Rhistory
-**/*.Rtab
+*.zip
+.Rhistory
+*.Rtab
+*.rds
