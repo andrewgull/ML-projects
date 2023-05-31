@@ -85,7 +85,6 @@ data <- data %>%
       GarageType,
       GarageCond,
       GarageFinish,
-      GarageCars,
       GarageQual,
       PoolQC,
       Fence
@@ -251,11 +250,11 @@ var_df
 
 ### Plot
 
-22 PCs explaining 0.8 of the variance
+20 PCs explaining 0.8 of the variance
 
 ```{r, fig.width=6, fig.height=3}
 var_df %>%
-  filter(var_cum_sum < .80) %>% 
+  filter(var_cum_sum < .81) %>% 
   mutate(PC = forcats::fct_inorder(PC)) %>%
   ggplot(aes(x = PC, y = var_explained)) + 
   geom_col(aes(fill = var_cum_sum)) +
@@ -326,7 +325,7 @@ Some predictors are in fact discrete (like `OverallQual`) - will this affect mod
 ```{r}
 set.seed(124)
 
-data_split <- initial_split(data, prop = 0.7)
+data_split <- initial_split(data, prop = 0.8)
 
 df_train <- training(data_split)
 df_test <- testing(data_split)
@@ -392,7 +391,7 @@ decorr_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>% 
   step_nzv(all_predictors()) %>%
   step_impute_mean(all_numeric_predictors()) %>% 
-  step_impute_knn(all_nominal_predictors()) %>% 
+  step_impute_mode(all_nominal_predictors()) %>% 
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_corr(threshold = tune("corr_tune"))
@@ -449,21 +448,20 @@ mixture = 0 specifies a ridge regression model
 ### Decorrelated predictors
 
 ```{r}
-resamples_file <- "data/lrl_decorr_res.rds"
+resamples_file <- "data/lrl_decorr_res_.rds"
+
+lrl_spec <- linear_reg(penalty = tune(),
+                      mixture = 1) %>%
+  set_engine("glmnet", num.threads = 4) %>%
+  set_mode("regression")
 
 if (file.exists(resamples_file)) {
   print("Found resamples file!")
   lrl_decorr_res <- readRDS(resamples_file)
 } else {
-  set.seed(133)
-  lrl_mod <- linear_reg(penalty = tune(),
-                       mixture = 1) %>%
-    set_engine("glmnet", num.threads = 4) %>%
-    set_mode("regression")
-  
   # model's workflow
   lrl_wf <- workflow() %>%
-    add_model(lrl_mod) %>%
+    add_model(lrl_spec) %>%
     add_recipe(decorr_recipe)
   
   # tuning and resampling
@@ -475,7 +473,7 @@ if (file.exists(resamples_file)) {
                              save_workflow = TRUE),
       metrics = cls_metrics
     )
-  saveRDS(lrl_decorr_res, "data/lrl_decorr_res.rds")
+  saveRDS(lrl_decorr_res, resamples_file)
 }
 
 autoplot(lrl_decorr_res)
@@ -520,17 +518,18 @@ autoplot(lr_decorr_yj_res)
 tuned number of components
 
 ```{r}
-resamples_file <- "data/lrl_pca_res.rds"
+resamples_file <- "data/lrl_pca_res_cv5.rds"
+
 
 if (file.exists(resamples_file)) {
   print("Found resamples file")
   lrl_pca_res <- readRDS(resamples_file)
 } else {
-  lr_pca_wf <- workflow() %>%
-    add_model(lr_mod) %>%
+  lrl_pca_wf <- workflow() %>%
+    add_model(lrl_spec) %>%
     add_recipe(pca_yj_recipe)
   
-  lr_pca_res <- lr_pca_wf %>%
+  lrl_pca_res <- lrl_pca_wf %>%
     tune_grid(
       grid = 20,
       resamples = cv_folds,
@@ -539,7 +538,7 @@ if (file.exists(resamples_file)) {
       metrics = cls_metrics
     )
   
-  saveRDS(lr_pca_res, resamples_file)
+  saveRDS(lrl_pca_res, resamples_file)
 }
 
 autoplot(lrl_pca_res)
@@ -558,20 +557,20 @@ basic pre-processing recipe & space-filled grid search
 ```{r}
 resamples_file <- "data/rf_base_res_cv5.rds"
 
+# model specification
+rf_spec <- rand_forest(mtry = tune(),
+                      min_n = tune(),
+                      trees = tune()) %>%
+  set_engine("ranger", num.threads = 8) %>%
+  set_mode("regression")
+
 if (file.exists(resamples_file)) {
   print("Found resamples file")
   rf_base_res <- readRDS(resamples_file)
 } else {
-  # model specification
-  rf_mod <- rand_forest(mtry = tune(),
-                        min_n = tune(),
-                        trees = 1000) %>%
-    set_engine("ranger", num.threads = 6) %>%
-    set_mode("regression")
-  
   # model workflow
   rf_wf <- workflow() %>%
-    add_model(rf_mod) %>%
+    add_model(rf_spec) %>%
     add_recipe(base_recipe)
   
   # tuning and resampling
@@ -840,7 +839,7 @@ resamples_file <- "data/xgb_rfe_bres_cv5.rds"
 
 if (file.exists(resamples_file)) {
   print("Found resamples file")
-  xgb_rfe_wl_res <- readRDS(resamples_file)
+  xgb_rfe_bres <- readRDS(resamples_file)
 } else {
   
   # xgb specification is the same as above
@@ -851,7 +850,8 @@ if (file.exists(resamples_file)) {
   param_set <- extract_parameter_set_dials(xgb_wf) %>%
     finalize(x = df_train %>% select(-SalePrice))
   
-   xgb_rfe_bres <- tune_bayes(
+   xgb_rfe_bres <- xgb_wf %>% 
+     tune_bayes(
       resamples = cv_folds,
       param_info = param_set,
       initial = 30,
@@ -1200,13 +1200,52 @@ final_fit %>%
   collect_metrics()
 ```
 
+## XGB RFE + Bayes
+
+```{r}
+# best model
+best_mod <- xgb_rfe_bres %>% 
+  select_best("rmse")
+
+# use hyper parameters of the best model
+last_mod <-
+  boost_tree(
+    mtry = best_mod$mtry,
+    min_n = best_mod$min_n,
+    tree_depth = best_mod$tree_depth,
+    learn_rate = best_mod$learn_rate,
+    loss_reduction = best_mod$loss_reduction,
+    sample_size = best_mod$sample_size,
+    stop_iter = best_mod$stop_iter
+  ) %>% 
+  set_engine("xgboost", num.threads=8) %>% 
+  set_mode("regression") 
+
+xgb_wf <- workflow() %>% 
+  add_model(xgb_spec) %>% 
+  add_recipe(base_rfe_recipe) # the recipe here should be the one that was used for this model
+
+# the last workflow
+last_wf <- 
+  xgb_wf %>%  
+  update_model(last_mod)
+
+# the last fit
+set.seed(345)
+
+final_fit <- 
+  last_wf %>% 
+  last_fit(data_split)
+
+
+final_fit %>% 
+  collect_metrics()
+```
+
+
 ## LRL + decorrelation
 
 ```{r}
-lrl_mod <- linear_reg(penalty = tune(),
-                       mixture = 1) %>%
-    set_engine("glmnet", num.threads = 4) %>%
-    set_mode("regression")
 
 # best model
 best_mod <- lrl_decorr_res %>% 
@@ -1223,7 +1262,7 @@ decorr_recipe$steps[[6]] <-
   recipes::update(decorr_recipe$steps[[6]], threshold = best_mod$corr_tune)
 
 lrl_wf <- workflow() %>% 
-  add_model(lrl_mod) %>% 
+  add_model(lrl_spec) %>% 
   add_recipe(decorr_recipe) # the recipe here should be the one that was used for this model
 
 # the last workflow
@@ -1247,7 +1286,6 @@ final_fit %>%
 
 ```{r}
 data_submission <- read_csv("data/test.csv", show_col_types = FALSE) 
-  # mutate(across(is_character, ~ as_factor(.x)))
 
 # same changes as in the main data set
 data_submission <- data_submission %>%
@@ -1263,27 +1301,41 @@ data_submission <- data_submission %>%
       GarageType,
       GarageCond,
       GarageFinish,
-      GarageCars,
       GarageQual,
       PoolQC,
       Fence
     ),
     ~ replace_na(., "No")
   ) %>% 
-  mutate(across(is_character, ~ as_factor(.x)))
+mutate(across(is_character, ~ as_factor(.x)))
 
+# fake SalePrice to match the number of columns
+data_submission$SalePrice <- 0
 
-final_recipe <- last_wf %>% fit(df_train) %>% extract_recipe()
+final_train_fit <- 
+  last_wf %>% 
+  fit(df_train)
 
-final_mod_fit <- last_wf %>% fit(df_train) %>% extract_fit_parsnip()
+final_recipe <-
+  final_train_fit %>%
+  extract_recipe()
 
-data_submission_processed <- final_recipe %>%
+final_mod_fit <- 
+  final_train_fit %>% 
+  extract_fit_parsnip()
+
+data_submission_processed <- 
+  final_recipe %>% 
   bake(new_data = data_submission) 
 
 prediction_data_submission <-
   predict(final_mod_fit, new_data = data_submission_processed)
 
-prediction_data_submission
+pred_submission_df <- tibble(Id = data_submission$Id, SalePrice = prediction_data_submission$.pred)
+pred_submission_df
 ```
+
+```{r}
+write_csv(pred_submission_df, "data/prediction_submission.csv", quote = "none")
 ```
 
