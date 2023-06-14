@@ -155,12 +155,43 @@ dens_yj_plot_list <-
 ggpubr::ggarrange(plotlist = dens_yj_plot_list, ncol = 7, nrow = 6)
 ```
 
+### log1p transform
+
+```{r, fig.width=18, fig.height=18}
+make_dens_plot_log <- function(sub_df) {
+  ggplot(sub_df, aes(log1p(value))) +
+    geom_density() +
+    xlab("") +
+    ggtitle((sub_df %>% pull(predictor))[1]) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 0.5, size = 8))
+}
+
+dens_log1p_plot_list <- data %>% 
+  select(where(is.numeric),-Id) %>%
+  pivot_longer(cols = where(is.numeric),
+               names_to = "predictor",
+               values_to = "value") %>%
+  group_by(predictor) %>%
+  group_split() %>%
+  map( ~ make_dens_plot_log(.x))
+
+ggpubr::ggarrange(plotlist = dens_log1p_plot_list, ncol = 7, nrow = 6)
+```
+
 
 ### Distribution of SalePrice
 
 ```{r}
 data %>% 
   ggplot(aes(SalePrice)) + 
+  geom_histogram(bins = 100)
+```
+
+Logarithm of `SalePrice`
+
+```{r}
+data %>% 
+  ggplot(aes(log(SalePrice))) + 
   geom_histogram(bins = 100)
 ```
 
@@ -325,17 +356,17 @@ Some predictors are in fact discrete (like `OverallQual`) - will this affect mod
 ```{r}
 set.seed(124)
 
-data_split <- initial_split(data, prop = 0.8)
+data_split <- initial_split(data, prop = 0.95)
 
 df_train <- training(data_split)
 df_test <- testing(data_split)
 
-dim(df_train)
+nrow(df_train)
 ```
 
 
 ```{r}
-dim(df_test)
+nrow(df_test)
 ```
 
 
@@ -343,7 +374,7 @@ dim(df_test)
 
 ```{r}
 set.seed(124)
-cv_folds <- vfold_cv(df_train, v = 5, repeats = 10) 
+cv_folds <- vfold_cv(df_train, v = 10, repeats = 10) 
 # v=5 lead to lower numbers in training compared to v=10
 # but v=10 has lower numbers in testing (overfitting!)
 
@@ -364,6 +395,9 @@ base_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors())
 
+base_log_recipe <- base_recipe %>% 
+  step_log("SalePrice")
+
 pca_yj_recipe <- recipe(SalePrice ~ ., data = data) %>%
   update_role(Id, new_role = "ID") %>%
   update_role(SalePrice, new_role = "outcome") %>% 
@@ -379,22 +413,51 @@ pca_yj_recipe <- recipe(SalePrice ~ ., data = data) %>%
 
 decorr_yj_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>%
-  update_role(SalePrice, new_role = "outcome") %>%
-  step_zv(all_predictors()) %>% 
-  step_nzv(all_predictors()) %>% 
-  step_dummy(all_nominal_predictors()) %>% 
-  step_YeoJohnson(all_numeric_predictors()) %>% 
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_nzv(all_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
-  step_corr(threshold = tune("corr_tune")) # The step will try to remove the minimum number of columns so that all the resulting absolute correlations are less than this value
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
+  step_log("SalePrice", offset = 1)
 
 decorr_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>% 
   step_nzv(all_predictors()) %>%
   step_impute_mean(all_numeric_predictors()) %>% 
   step_impute_mode(all_nominal_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>%
+  step_nzv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>% 
+  step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
+  step_log("SalePrice")
+
+# decorr_log_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+#   update_role(Id, new_role = "ID") %>% 
+#   step_nzv(all_predictors()) %>%
+#   step_impute_mean(all_numeric_predictors()) %>% 
+#   step_impute_mode(all_nominal_predictors()) %>% 
+#   step_normalize(all_numeric_predictors()) %>% 
+#   step_dummy(all_nominal_predictors()) %>%
+#   step_nzv(all_predictors()) %>%
+#   step_log(all_numeric_predictors()) %>% 
+#   step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
+#   step_log("SalePrice")
+
+decorr_log_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_nzv(all_predictors()) %>%
+  step_log(all_numeric_predictors(), offset = 1) %>%
   step_normalize(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>% 
-  step_corr(threshold = tune("corr_tune"))
+  step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
+  step_log("SalePrice")
 
 decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>% 
@@ -403,7 +466,7 @@ decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_impute_knn(all_nominal_predictors()) %>% 
   step_orderNorm(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>% 
-  step_corr(threshold = tune("corr_tune"))
+  step_corr(all_numeric_predictors(), threshold = tune("corr_tune"))
 ```
 
 
@@ -448,10 +511,10 @@ mixture = 0 specifies a ridge regression model
 ### Decorrelated predictors
 
 ```{r}
-resamples_file <- "data/lrl_decorr_res_.rds"
+resamples_file <- "data/lrl_decorr_res_cv10_new_split.rds"
 
 lrl_spec <- linear_reg(penalty = tune(),
-                      mixture = 1) %>%
+                      mixture = tune()) %>%
   set_engine("glmnet", num.threads = 4) %>%
   set_mode("regression")
 
@@ -479,8 +542,6 @@ if (file.exists(resamples_file)) {
 autoplot(lrl_decorr_res)
 ```
 
-#### Best models
-
 ```{r}
 lrl_decorr_res %>% 
   show_best()
@@ -488,48 +549,26 @@ lrl_decorr_res %>%
 
 ### Decorrelated predictors + YJ
 
-Issues with computations!
 
 ```{r}
-set.seed(133)
+resamples_file <- "data/lrl_decorr_yj_res_cv10_new_split.rds"
 
-# model's workflow
-lr_wf <- workflow() %>%
-  add_model(lr_mod) %>%
-  add_recipe(decorr_yj_recipe)
-
-# tuning and resampling
-lr_decorr_yj_res <- lr_wf %>%
-  tune_grid(
-    grid = 20,
-    resamples = cv_folds,
-    control = control_grid(save_pred = TRUE,
-                           save_workflow = TRUE),
-    metrics = cls_metrics
-  )
-
-
-#saveRDS(lr_decorr_yj_res, "data/lr_decorr_yj_res.rds")
-autoplot(lr_decorr_yj_res)
-```
-
-## LR PCA recipe
-
-tuned number of components
-
-```{r}
-resamples_file <- "data/lrl_pca_res_cv5.rds"
-
+lrl_spec <- linear_reg(penalty = tune(),
+                      mixture = tune()) %>%
+  set_engine("glmnet", num.threads = 4) %>%
+  set_mode("regression")
 
 if (file.exists(resamples_file)) {
-  print("Found resamples file")
-  lrl_pca_res <- readRDS(resamples_file)
+  print("Found resamples file!")
+  lrl_decorr_yj_res <- readRDS(resamples_file)
 } else {
-  lrl_pca_wf <- workflow() %>%
+  # model's workflow
+  lrl_wf <- workflow() %>%
     add_model(lrl_spec) %>%
-    add_recipe(pca_yj_recipe)
+    add_recipe(decorr_yj_recipe)
   
-  lrl_pca_res <- lrl_pca_wf %>%
+  # tuning and resampling
+  lrl_decorr_yj_res <- lrl_wf %>%
     tune_grid(
       grid = 20,
       resamples = cv_folds,
@@ -537,17 +576,150 @@ if (file.exists(resamples_file)) {
                              save_workflow = TRUE),
       metrics = cls_metrics
     )
-  
-  saveRDS(lrl_pca_res, resamples_file)
+  saveRDS(lrl_decorr_yj_res, resamples_file)
 }
 
-autoplot(lrl_pca_res)
+autoplot(lrl_decorr_yj_res)
 ```
 
-#### Best models
+```{r}
+show_best(lrl_decorr_yj_res)
+```
+
+### Decorrelated predictors + log1p
 
 ```{r}
-show_best(lrl_pca_res)
+resamples_file <- "data/lrl_decorr_log1p_res_cv10_new_split.rds"
+
+lrl_spec <- linear_reg(penalty = tune(),
+                      mixture = tune()) %>%
+  set_engine("glmnet", num.threads = 4) %>%
+  set_mode("regression")
+
+if (file.exists(resamples_file)) {
+  print("Found resamples file!")
+  lrl_decorr_log1p_res <- readRDS(resamples_file)
+} else {
+  # model's workflow
+  lrl_wf <- workflow() %>%
+    add_model(lrl_spec) %>%
+    add_recipe(decorr_log_recipe)
+  
+  # tuning and resampling
+  lrl_decorr_log1p_res <- lrl_wf %>%
+    tune_grid(
+      grid = 20,
+      resamples = cv_folds,
+      control = control_grid(save_pred = TRUE,
+                             save_workflow = TRUE),
+      metrics = cls_metrics
+    )
+  saveRDS(lrl_decorr_log1p_res, resamples_file)
+}
+
+autoplot(lrl_decorr_log1p_res)
+```
+
+```{r}
+show_best(lrl_decorr_log1p_res)
+```
+
+### Comparison of mean  RMSE
+
+```{r}
+# function to retrieve the best HP combination based on mean RMSE
+best_rmse <- function(res_obj, name){
+  res_obj %>% 
+    show_best("rmse") %>% 
+    select(mean, std_err) %>%
+    mutate(model = name) %>% 
+    slice_head(n = 1)
+}
+
+# make a data frame
+best_models_rmse <-
+  map2_dfr(
+    list(
+      lrl_decorr_res,
+      lrl_decorr_yj_res,
+      lrl_decorr_log1p_res
+    ),
+    c(
+      "LRL decorr",
+      "LRL yj",
+      "LRL log"
+    ),
+    ~ best_rmse(.x, .y)
+  )
+
+ggplot(best_models_rmse,
+       aes(
+         y = mean,
+         x = model,
+         ymin = mean - std_err,
+         ymax = mean + std_err
+       )) +
+  geom_errorbar(aes(color = model)) +
+  geom_point(aes(y = mean, color = model)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.95, hjust=1)) +
+  xlab("") +
+  ylab("RMSE")
+```
+
+```{r}
+library(tidyposterior)
+
+# function to get a name of the best preprocessor from your resample
+best_preprocessor <- function(res_obj) {
+  res_obj %>% 
+    select_best("rmse") %>% 
+    pull(.config)
+}
+
+# function to make a df with AUCs from the best preproc
+best_rmse <- function(res_obj, model_name){
+  res_obj %>%
+    collect_metrics(summarize = FALSE) %>%
+    filter(.metric == "rmse", .config == best_preprocessor(res_obj)) %>%
+    select(id, id2, {{model_name}} := .estimate)
+}
+
+# generate distributions
+mod_names <- c("LRL decorr",
+               "LRL yj",
+               "LRL log")
+
+mod_resamples <- list(
+  lrl_decorr_res,
+  lrl_decorr_yj_res,
+  lrl_decorr_log1p_res
+)
+
+resampling_comparison <-
+  map2(mod_resamples, mod_names, ~ best_rmse(res_obj = .x, model_name = .y)) %>%
+  reduce(inner_join, by = c("id", "id2")) %>%
+  set_names(c("id", "id2", mod_names)) %>%
+  unite(id, id, id2)
+
+# make ANOVA
+resampling_posterior <-
+  perf_mod(
+    resampling_comparison,
+    iter = 10000,
+    seed = 100,
+    refresh = 0,
+    chains = 4,
+    cores = 4
+  )
+
+# plot
+autoplot(resampling_posterior)
+```
+
+```{r}
+res_diff <- contrast_models(resampling_posterior, seed = 100) 
+
+summary(res_diff)
 ```
 
 ## Basic RF
@@ -555,7 +727,7 @@ show_best(lrl_pca_res)
 basic pre-processing recipe & space-filled grid search
 
 ```{r}
-resamples_file <- "data/rf_base_res_cv5.rds"
+resamples_file <- "data/rf_base_res_cv10_new_split.rds"
 
 # model specification
 rf_spec <- rand_forest(mtry = tune(),
@@ -588,12 +760,47 @@ if (file.exists(resamples_file)) {
 autoplot(rf_base_res)
 ```
 
-### Best models
-
 ```{r}
 rf_base_res %>% 
   show_best("rmse")
 ```
+
+## Basic RF + log transformation of the target
+
+```{r}
+resamples_file <- "data/rf_base_log_res_cv10_new_split.rds"
+
+# model specification
+rf_spec <- rand_forest(mtry = tune(),
+                      min_n = tune(),
+                      trees = tune()) %>%
+  set_engine("ranger", num.threads = 8) %>%
+  set_mode("regression")
+
+if (file.exists(resamples_file)) {
+  print("Found resamples file")
+  rf_base_log_res <- readRDS(resamples_file)
+} else {
+  # model workflow
+  rf_wf <- workflow() %>%
+    add_model(rf_spec) %>%
+    add_recipe(base_log_recipe)
+  
+  # tuning and resampling
+  rf_base_log_res <- rf_wf %>%
+    tune_grid(
+      grid = 20,
+      resamples = cv_folds,
+      control = control_grid(save_pred = TRUE,
+                             save_workflow = TRUE),
+      metrics = cls_metrics
+    )
+  saveRDS(rf_base_log_res, resamples_file)
+}
+
+autoplot(rf_base_log_res)
+```
+
 
 ## MLP
 
@@ -754,31 +961,34 @@ xgb_wl_res %>%
 ### Decorrelated recipe and win-loss search
 
 ```{r, eval=FALSE}
-resamples_file <- "data/xgb_deco  "
+resamples_file <- "data/xgb_decorr_wl_res_cv5.rds"
 
-# xgb specification is the same as above
-xgb_wf <- workflow() %>% 
-  add_model(xgb_spec) %>% 
-  add_recipe(decorr_recipe)
-
-param_set <- extract_parameter_set_dials(xgb_wf) %>%
+if (file.exists(resamples_file)) {
+  print("Found resamples file")
+  xgb_decorr_wl_res <- readRDS(resamples_file)
+} else {
+  xgb_wf <- workflow() %>%
+    add_model(xgb_spec) %>%
+    add_recipe(decorr_recipe)
+  
+  param_set <- extract_parameter_set_dials(xgb_wf) %>%
     finalize(x = df_train %>% select(-SalePrice))
-
-xgb_decorr_wl_res <- xgb_wf %>%
-  tune_race_win_loss(
-    param_info = param_set,
-    resamples = cv_folds,
-    grid = 20,
-    control = control_race(
-      verbose_elim = TRUE,
-      save_pred = TRUE,
-      save_workflow = TRUE,
-      burn_in = 10
+  
+  xgb_decorr_wl_res <- xgb_wf %>%
+    tune_race_win_loss(
+      param_info = param_set,
+      resamples = cv_folds,
+      grid = 20,
+      control = control_race(
+        verbose_elim = TRUE,
+        save_pred = TRUE,
+        save_workflow = TRUE,
+        burn_in = 10
+      )
     )
-  )
+  saveRDS(xgb_decorr_wl_res, resamples_file)
+}
 
-saveRDS(xgb_decorr_wl_res, "data/xgb_decorr_wl_res.rds")
-# xgb_decorr_wl_res <- readRDS("data/xgb_decorr_wl_res")
 plot_race(xgb_decorr_wl_res)
 ```
 
@@ -989,8 +1199,6 @@ best_models_rmse <-
   map2_dfr(
     list(
       lrl_decorr_res,
-      lrl_pca_res,
-      rf_base_res,
       xgb_base_bres,
       xgb_wl_res,
       xgb_rfe_wl_res,
@@ -998,8 +1206,6 @@ best_models_rmse <-
     ),
     c(
       "LRL decorr",
-      "LRL PCA",
-      "RF base",
       "XGB base",
       "XGB wl",
       "XGB rfe wl",
@@ -1154,11 +1360,11 @@ final_fit %>%
   collect_metrics()
 ```
 
-## XGB RFE + Racing
+## XGB RFE + Bayes
 
 ```{r}
 # best model
-best_mod <- xgb_rfe_wl_res %>% 
+best_mod <- xgb_rfe_bres %>% 
   select_best("rmse")
 
 # use hyper parameters of the best model
@@ -1248,22 +1454,23 @@ final_fit %>%
 ```{r}
 
 # best model
-best_mod <- lrl_decorr_res %>% 
+best_mod <- lrl_decorr_yj_res %>% 
   select_best("rmse")
 
 # use hyper parameters of the best model
 last_mod <-
-  linear_reg(penalty = best_mod$penalty,) %>%
-  set_engine("glmnet", num.threads = 8) %>%
+  linear_reg(penalty = best_mod$penalty, mixture = best_mod$mixture) %>%
+  set_engine("glmnet", num.threads = 2) %>%
   set_mode("regression")
 
-# update corr threshold in the chosen recipe
-decorr_recipe$steps[[6]] <-
-  recipes::update(decorr_recipe$steps[[6]], threshold = best_mod$corr_tune)
+# update corr threshold in a copy of the chosen recipe
+decorr_yj_recipe_tuned <- decorr_yj_recipe
+decorr_yj_recipe_tuned$steps[[8]] <-
+  recipes::update(decorr_yj_recipe_tuned$steps[[8]], threshold = best_mod$corr_tune)
 
 lrl_wf <- workflow() %>% 
   add_model(lrl_spec) %>% 
-  add_recipe(decorr_recipe) # the recipe here should be the one that was used for this model
+  add_recipe(decorr_yj_recipe_tuned) # the recipe here should be the one that was used for this model
 
 # the last workflow
 last_wf <- 
@@ -1331,11 +1538,13 @@ data_submission_processed <-
 prediction_data_submission <-
   predict(final_mod_fit, new_data = data_submission_processed)
 
-pred_submission_df <- tibble(Id = data_submission$Id, SalePrice = prediction_data_submission$.pred)
+pred_submission_df <- tibble(Id = data_submission$Id, 
+                             SalePrice = exp(prediction_data_submission$.pred))
 pred_submission_df
 ```
 
 ```{r}
-write_csv(pred_submission_df, "data/prediction_submission.csv", quote = "none")
+# first submission 0.17780 / place 3682 out of 4672
+write_csv(pred_submission_df, "data/prediction_submission_yj_log.csv", quote = "none")
 ```
 
