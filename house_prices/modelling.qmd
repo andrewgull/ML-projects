@@ -93,7 +93,7 @@ data <- data %>%
   ) %>%
   mutate(across(is_character, ~ as_factor(.x)))
 
-data %>% 
+data %>%
   skimr::skim() %>% 
   skimr::yank("factor")
 ```
@@ -107,7 +107,13 @@ data %>%
   skimr::yank("numeric")
 ```
 
-For NA imputation I will use some kind of algorithm
+`MSSubClass` is not numeric. Transfrom it to factor
+
+```{r}
+data <- data %>% 
+  mutate(MSSubClass = as.factor(MSSubClass))
+```
+
 
 ### Raw distributions
 
@@ -196,7 +202,7 @@ data %>%
 ```
 
 
-# Corr. matrix for numerical predictors
+## Corr. plot
 
 ```{r, fig.width=10, fig.height=10}
 cor_matrix <- data %>% 
@@ -206,11 +212,34 @@ cor_matrix <- data %>%
 corrplot::corrplot(cor_matrix, type = "upper", tl.col = "black", tl.cex = 0.6, method = "ellipse")
 ```
 
-Some predictors are correlated with each other.
+### Predictors correlated with `SalePrice`:
 
-`SalePrice` (outcome) is correlated with quite a lot of the predictors.
+```{r}
+cor_df <- cor_matrix %>% 
+  as_tibble() %>% 
+  select(SalePrice) %>%
+  rename(corr.coeff = SalePrice) %>% 
+  mutate(predictor = row.names(cor_matrix)) %>% 
+  arrange(-abs(corr.coeff)) %>% 
+  filter(predictor != "SalePrice", predictor != "Id")
 
-# Boxplots for factors
+cor_df
+```
+
+If we take predictors with correlations 0.5 and higher?
+
+### The best correlated predictors
+
+```{r}
+very_basic_predictors <- cor_df %>% 
+  filter(corr.coeff > 0.5) %>% 
+  pull(predictor)
+
+very_basic_predictors
+```
+
+
+## Boxplots for factors
 
 ```{r, fig.width=18, fig.height=18, warning=FALSE}
 make_plot <- function(sub_df) {
@@ -235,9 +264,9 @@ ggpubr::ggarrange(plotlist =  plot_list, ncol = 6, nrow = 8)
 ```
 
 
-# PCA
+## PCA
 
-## Recipe
+### Recipe
 
 ```{r}
 pca_recipe <- recipe(SalePrice ~ ., data = data) %>%
@@ -260,9 +289,9 @@ data_pca <- prep(pca_recipe, retain = TRUE)
 data_pca$template %>% dim()
 ```
 
-## Explained variation
+### Explained variation
 
-### Table
+#### Table
 
 ```{r}
 sdev <- data_pca$steps[[8]]$res$sdev
@@ -279,7 +308,7 @@ var_df
 ```
 
 
-### Plot
+#### Plot
 
 20 PCs explaining 0.8 of the variance
 
@@ -294,7 +323,7 @@ var_df %>%
 ```
 
 
-## Scatter plot
+### Scatter plot
 
 ```{r, warning=FALSE, fig.width=7}
 library(ggforce)
@@ -315,7 +344,7 @@ data_pca$template %>%
   ggtitle("Principal Component Analysis")
 ```
 
-# UMAP
+## UMAP
 
 ```{r, fig.width=6, warning=FALSE}
 decorq_recipe <- recipe(SalePrice ~ ., data = data) %>%
@@ -346,12 +375,23 @@ data_umap$template %>%
   ggtitle("UMAP")
 ```
 
+# Feature engineering
 
-# Preprocessing
+Let's make new features!
 
-Some predictors are in fact discrete (like `OverallQual`) - will this affect models?
+Idea in the followinf chunk is borrowed from [here](https://www.kaggle.com/code/alexdrozd/500-100-score-0-11565)
 
-## Data split
+```{r}
+data <- data %>% 
+  mutate(Sold1 = YrSold - YearRemodAdd,
+         Sold2 = YearRemodAdd - YearBuilt,
+         Square = `1stFlrSF` + `2ndFlrSF` + TotalBsmtSF,
+         Square1 = WoodDeckSF + OpenPorchSF + EnclosedPorch + `3SsnPorch` + ScreenPorch,
+         Bath = BsmtFullBath + FullBath
+         )
+```
+
+# Data split
 
 ```{r}
 set.seed(124)
@@ -370,21 +410,24 @@ nrow(df_test)
 ```
 
 
-## Folds and metrics
+# Folds and metrics
 
 ```{r}
 set.seed(124)
 cv_folds <- vfold_cv(df_train, v = 10, repeats = 10) 
-# v=5 lead to lower numbers in training compared to v=10
-# but v=10 has lower numbers in testing (overfitting!)
+
+# OR use the entire data set (doesn't help)
+#cv_folds <- vfold_cv(data, v = 10, repeats = 10)
 
 cls_metrics <- metric_set(rmse)
 ```
 
+# Preprocessing
+
+
+Some predictors are in fact discrete (like `OverallQual`) - will this affect models?
 
 ## Recipes
-
-### Base, PCA, decorr & decorq
 
 ```{r}
 base_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
@@ -397,19 +440,6 @@ base_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
 
 base_log_recipe <- base_recipe %>% 
   step_log("SalePrice")
-
-pca_yj_recipe <- recipe(SalePrice ~ ., data = data) %>%
-  update_role(Id, new_role = "ID") %>%
-  update_role(SalePrice, new_role = "outcome") %>% 
-  step_nzv(all_predictors()) %>% 
-  step_normalize(all_numeric_predictors()) %>%
-  step_impute_mean(all_numeric_predictors()) %>% 
-  step_impute_knn(all_nominal_predictors()) %>%
-  step_YeoJohnson(all_numeric_predictors()) %>% 
-  step_normalize(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>% 
-  step_pca(all_predictors(), num_comp = tune()) %>% 
-  step_normalize(all_numeric_predictors())
 
 decorr_yj_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>%
@@ -435,18 +465,6 @@ decorr_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
   step_log("SalePrice")
 
-# decorr_log_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
-#   update_role(Id, new_role = "ID") %>% 
-#   step_nzv(all_predictors()) %>%
-#   step_impute_mean(all_numeric_predictors()) %>% 
-#   step_impute_mode(all_nominal_predictors()) %>% 
-#   step_normalize(all_numeric_predictors()) %>% 
-#   step_dummy(all_nominal_predictors()) %>%
-#   step_nzv(all_predictors()) %>%
-#   step_log(all_numeric_predictors()) %>% 
-#   step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
-#   step_log("SalePrice")
-
 decorr_log_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   update_role(Id, new_role = "ID") %>%
   step_nzv(all_predictors()) %>%
@@ -459,20 +477,7 @@ decorr_log_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
   step_log("SalePrice")
 
-decorq_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
-  update_role(Id, new_role = "ID") %>% 
-  step_nzv(all_predictors()) %>%
-  step_impute_mean(all_numeric_predictors()) %>% 
-  step_impute_knn(all_nominal_predictors()) %>% 
-  step_orderNorm(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>% 
-  step_corr(all_numeric_predictors(), threshold = tune("corr_tune"))
-```
-
-
-### With feature selection
-
-```{r}
+# FEATURE ELIMINATION
 # my fork of colino package with fixed issue #1
 if (!require(colino, quietly=TRUE))
   devtools::install_github("https://github.com/andrewgull/colino")
@@ -507,6 +512,7 @@ mixture = 1 specifies a pure lasso model
 mixture = 0 specifies a ridge regression model
 
 ⁠0 < mixture < 1⁠ specifies an elastic net model, interpolating lasso and ridge
+
 
 ### Decorrelated predictors
 
@@ -547,7 +553,7 @@ lrl_decorr_res %>%
   show_best()
 ```
 
-### Decorrelated predictors + YJ
+### Decorrelated predictors + YJ transformation 
 
 
 ```{r}
@@ -589,7 +595,8 @@ show_best(lrl_decorr_yj_res)
 ### Decorrelated predictors + log1p
 
 ```{r}
-resamples_file <- "data/lrl_decorr_log1p_res_cv10_new_split.rds"
+resamples_file <- "data/lrl_decorr_log1p_res_cv10_new_split_mssub.rds"
+#resamples_file <- "data/lrl_decorr_log1p_res_cv10_whole_data.rds"
 
 lrl_spec <- linear_reg(penalty = tune(),
                       mixture = tune()) %>%
@@ -624,6 +631,71 @@ autoplot(lrl_decorr_log1p_res)
 show_best(lrl_decorr_log1p_res)
 ```
 
+### The 12 best predictors
+
+```{r}
+# this will require a new data split
+set.seed(124)
+
+data12 <- data %>% 
+  select(all_of(very_basic_predictors), SalePrice)
+
+data12_split <- initial_split(data12, prop = 0.95)
+
+df12_train <- training(data12_split)
+df12_test <- testing(data12_split)
+
+# and new folds
+set.seed(124)
+cv_folds_12 <- vfold_cv(df12_train, v = 10, repeats = 10) 
+
+# and a new recipe
+decorr12_log_recipe <- recipe(SalePrice ~ ., data = df12_train) %>%
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_nzv(all_predictors()) %>%
+  step_log(all_numeric_predictors(), offset = 1) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_corr(all_numeric_predictors(), threshold = tune("corr_tune")) %>%
+  step_log("SalePrice")
+
+resamples_file <- "data/lrl_decorr12_log1p_res_cv10.rds"
+
+lrl_spec <- linear_reg(penalty = tune(),
+                       mixture = tune()) %>%
+  set_engine("glmnet", num.threads = 4) %>%
+  set_mode("regression")
+
+if (file.exists(resamples_file)) {
+  print("Found resamples file!")
+  lrl_decorr12_log1p_res <- readRDS(resamples_file)
+} else {
+  # model's workflow
+  lrl_wf <- workflow() %>%
+    add_model(lrl_spec) %>%
+    add_recipe(decorr12_log_recipe)
+  
+  # tuning and resampling
+  lrl_decorr12_log1p_res <- lrl_wf %>%
+    tune_grid(
+      grid = 20,
+      resamples = cv_folds_12,
+      control = control_grid(save_pred = TRUE,
+                             save_workflow = TRUE),
+      metrics = cls_metrics
+    )
+  saveRDS(lrl_decorr12_log1p_res, resamples_file)
+}
+
+autoplot(lrl_decorr12_log1p_res)
+```
+
+```{r}
+show_best(lrl_decorr12_log1p_res)
+```
+
 ### Comparison of mean  RMSE
 
 ```{r}
@@ -642,12 +714,14 @@ best_models_rmse <-
     list(
       lrl_decorr_res,
       lrl_decorr_yj_res,
-      lrl_decorr_log1p_res
+      lrl_decorr_log1p_res,
+      lrl_decorr12_log1p_res
     ),
     c(
       "LRL decorr",
       "LRL yj",
-      "LRL log"
+      "LRL log",
+      "LRL 12 log"
     ),
     ~ best_rmse(.x, .y)
   )
@@ -689,7 +763,7 @@ mod_names <- c("LRL decorr",
                "LRL yj",
                "LRL log")
 
-mod_resamples <- list(
+mod_resamples <- list(clearly
   lrl_decorr_res,
   lrl_decorr_yj_res,
   lrl_decorr_log1p_res
@@ -767,6 +841,8 @@ rf_base_res %>%
 
 ## Basic RF + log transformation of the target
 
+to compare with LRs
+
 ```{r}
 resamples_file <- "data/rf_base_log_res_cv10_new_split.rds"
 
@@ -801,30 +877,31 @@ if (file.exists(resamples_file)) {
 autoplot(rf_base_log_res)
 ```
 
+```{r}
+rf_base_log_res %>% show_best()
+```
 
 ## MLP
 
-### PCA
+### Decorrelated predictors & YJ transformation
 
 ```{r}
-resamples_file <- "data/mlp_pca_res_cv5.rds"
+mlp_nnet_spec <-
+  mlp(hidden_units = tune(), penalty = tune(), epochs = tune()) %>%
+  set_engine('nnet', num.threads = 8) %>%
+  set_mode('regression')
+
+resamples_file <- "data/mlp_decorr_yj_res_cv10_new_split.rds"
 
 if (file.exists(resamples_file)) {
   print("Found resamples file")
-  mlp_pca_res <- readRDS(resamples_file)
+  mlp_decorr_yj_res <- readRDS(resamples_file)
 } else {
-  mlp_mod <-
-    mlp(hidden_units = tune(),
-        penalty = tune(),
-        epochs = tune()) %>%
-    set_mode("regression") %>%
-    set_engine("nnet", num.threads = 8)
-  
   mlp_wf <- workflow() %>%
-    add_model(mlp_mod) %>%
-    add_recipe(pca_recipe)
+    add_model(mlp_nnet_spec) %>%
+    add_recipe(decorr_yj_recipe)
   
-  mlp_pca_res <- mlp_wf %>%
+  mlp_decorr_yj_res <- mlp_wf %>%
     tune_grid(
       grid = 20,
       resamples = cv_folds,
@@ -832,67 +909,52 @@ if (file.exists(resamples_file)) {
                              save_workflow = TRUE),
       metrics = cls_metrics
     )
-  
-  saveRDS(mlp_pca_res, resamples_file)
+  saveRDS(mlp_decorr_yj_res, resamples_file)
 }
 
-autoplot(mlp_pca_res)
-```
-
-```{r}
-show_best(mlp_pca_res)
-```
-
-
-### Decorrelated predictors & ORQ transformation
-
-#### Recipe
-
-```{r}
-decorq_na_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
-  update_role(Id, new_role = "ID") %>% 
-  step_nzv(all_predictors()) %>%
-  step_filter_missing(all_predictors()) %>% 
-  step_impute_mean(all_numeric_predictors()) %>% 
-  step_impute_knn(all_nominal_predictors()) %>% 
-  step_orderNorm(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>% 
-  step_lincomb(all_predictors()) %>% 
-  step_corr(threshold = tune("corr_tune"))
-```
-
-#### Tuning
-
-```{r}
-resamples_file <- "data/mlp_decorq_res_cv10.rds"
-
-if (file.exists(resamples_file)) {
-  print("Found resamples file")
-  mlp_decorq_res <- readRDS(resamples_file)
-} else {
-  mlp_decorq_wf <- workflow() %>%
-    add_model(mlp_mod) %>%
-    add_recipe(decorq_na_recipe)
-  
-  mlp_decorq_res <- mlp_decorq_wf %>%
-    tune_grid(
-      grid = 20,
-      resamples = cv_folds,
-      control = control_grid(save_pred = TRUE,
-                             save_workflow = TRUE),
-      metrics = cls_metrics
-    )
-  saveRDS(mlp_decorq_res, resamples_file)
-}
-
-autoplot(mlp_decorq_res)
+autoplot(mlp_decorr_yj_res)
 ```
 
 #### Best models
 
 ```{r}
-mlp_decorq_res %>% 
+mlp_decorr_yj_res %>% 
   show_best()
+```
+
+```{r}
+# make a data frame
+best_models_rmse <-
+  map2_dfr(
+    list(
+      lrl_decorr_res,
+      lrl_decorr_yj_res,
+      lrl_decorr_log1p_res,
+      rf_base_log_res,
+      mlp_decorr_yj_res
+    ),
+    c(
+      "LRL norm log",
+      "LRL yj log",
+      "LRL log",
+      "RF log",
+      "MLP yj log"
+    ),
+    ~ best_rmse(.x, .y)
+  )
+
+ggplot(best_models_rmse,
+       aes(
+         y = mean,
+         x = model,
+         ymin = mean - std_err,
+         ymax = mean + std_err
+       )) +
+  geom_errorbar(aes(color = model)) +
+  geom_point(aes(y = mean, color = model)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.95, hjust=1)) +
+  xlab("") +
+  ylab("RMSE")
 ```
 
 ## XGB
@@ -1360,51 +1422,6 @@ final_fit %>%
   collect_metrics()
 ```
 
-## XGB RFE + Bayes
-
-```{r}
-# best model
-best_mod <- xgb_rfe_bres %>% 
-  select_best("rmse")
-
-# use hyper parameters of the best model
-last_mod <-
-  boost_tree(
-    mtry = best_mod$mtry,
-    min_n = best_mod$min_n,
-    tree_depth = best_mod$tree_depth,
-    learn_rate = best_mod$learn_rate,
-    loss_reduction = best_mod$loss_reduction,
-    sample_size = best_mod$sample_size,
-    stop_iter = best_mod$stop_iter
-  ) %>% 
-  set_engine("xgboost", num.threads=8) %>% 
-  set_mode("regression") 
-
-# update corr threshold in the chosen recipe
-# decorr_recipe$steps[[6]] <-
-#   recipes::update(decorr_recipe$steps[[6]], threshold = best_mod$corr_tune)
-
-xgb_wf <- workflow() %>% 
-  add_model(xgb_spec) %>% 
-  add_recipe(base_rfe_recipe) # the recipe here should be the one that was used for this model
-
-# the last workflow
-last_wf <- 
-  xgb_wf %>%  
-  update_model(last_mod)
-
-# the last fit
-set.seed(345)
-
-final_fit <- 
-  last_wf %>% 
-  last_fit(data_split)
-
-
-final_fit %>% 
-  collect_metrics()
-```
 
 ## XGB RFE + Bayes
 
@@ -1449,7 +1466,7 @@ final_fit %>%
 ```
 
 
-## LRL + decorrelation
+## LRL + YJ and log
 
 ```{r}
 
@@ -1489,6 +1506,46 @@ final_fit %>%
   collect_metrics()
 ```
 
+
+## LRL + log
+
+```{r}
+# best model
+best_mod <- lrl_decorr_log1p_res %>% 
+  select_best("rmse")
+
+# use hyper parameters of the best model
+last_mod <-
+  linear_reg(penalty = best_mod$penalty, mixture = best_mod$mixture) %>%
+  set_engine("glmnet", num.threads = 2) %>%
+  set_mode("regression")
+
+# update corr threshold in a copy of the chosen recipe
+decorr_log_recipe_tuned <- decorr_log_recipe
+decorr_log_recipe_tuned$steps[[8]] <-
+  recipes::update(decorr_log_recipe_tuned$steps[[8]], threshold = best_mod$corr_tune)
+
+lrl_wf <- workflow() %>% 
+  add_model(lrl_spec) %>% 
+  add_recipe(decorr_log_recipe_tuned) # the recipe here should be the one that was used for this model
+
+# the last workflow
+last_wf <- 
+  lrl_wf %>%  
+  update_model(last_mod)
+
+# the last fit
+set.seed(34)
+
+final_fit <- 
+  last_wf %>% 
+  last_fit(data_split)
+
+final_fit %>% 
+  collect_metrics()
+```
+
+
 # Prediction
 
 ```{r}
@@ -1515,6 +1572,9 @@ data_submission <- data_submission %>%
     ~ replace_na(., "No")
   ) %>% 
 mutate(across(is_character, ~ as_factor(.x)))
+
+data_submission <- data_submission %>% 
+  mutate(MSSubClass = as.factor(MSSubClass))
 
 # fake SalePrice to match the number of columns
 data_submission$SalePrice <- 0
@@ -1543,8 +1603,16 @@ pred_submission_df <- tibble(Id = data_submission$Id,
 pred_submission_df
 ```
 
+- the first submission 0.17780 / place 3682 out of 4672
+
+- LRL YJ input - log target: 0.12912 / place 959 (899 excluding cheaters)
+
+- LRL log input - log target:  0.12719 / place 812 (752 excluding cheaters)
+
+- 
+
 ```{r}
-# first submission 0.17780 / place 3682 out of 4672
-write_csv(pred_submission_df, "data/prediction_submission_yj_log.csv", quote = "none")
+
+write_csv(pred_submission_df, "data/prediction_submission_log1p_mssub.csv", quote = "none")
 ```
 
