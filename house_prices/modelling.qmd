@@ -505,7 +505,7 @@ base_rfe_recipe %>%
 
 # Modelling
 
-## Basic LASSO LR
+## Basic penalized LR
 
 mixture = 1 specifies a pure lasso model
 
@@ -595,8 +595,8 @@ show_best(lrl_decorr_yj_res)
 ### Decorrelated predictors + log1p
 
 ```{r}
-resamples_file <- "data/lrl_decorr_log1p_res_cv10_new_split_mssub.rds"
-#resamples_file <- "data/lrl_decorr_log1p_res_cv10_whole_data.rds"
+#resamples_file <- "data/lrl_decorr_log1p_res_cv10_new_split_mssub.rds"
+resamples_file <- "data/lrl_decorr_log1p_res_cv10_whole_data.rds"
 
 lrl_spec <- linear_reg(penalty = tune(),
                       mixture = tune()) %>%
@@ -631,7 +631,7 @@ autoplot(lrl_decorr_log1p_res)
 show_best(lrl_decorr_log1p_res)
 ```
 
-### The 12 best predictors
+### The 12 predictors correlated with the target
 
 ```{r}
 # this will require a new data split
@@ -696,7 +696,7 @@ autoplot(lrl_decorr12_log1p_res)
 show_best(lrl_decorr12_log1p_res)
 ```
 
-### Comparison of mean  RMSE
+## Comparison of mean  RMSE
 
 ```{r}
 # function to retrieve the best HP combination based on mean RMSE
@@ -750,8 +750,8 @@ best_preprocessor <- function(res_obj) {
     pull(.config)
 }
 
-# function to make a df with AUCs from the best preproc
-best_rmse <- function(res_obj, model_name){
+# function to make a df with RMSEs from the best preprocessor
+best_rmse2 <- function(res_obj, model_name){
   res_obj %>%
     collect_metrics(summarize = FALSE) %>%
     filter(.metric == "rmse", .config == best_preprocessor(res_obj)) %>%
@@ -763,14 +763,14 @@ mod_names <- c("LRL decorr",
                "LRL yj",
                "LRL log")
 
-mod_resamples <- list(clearly
+mod_resamples <- list(
   lrl_decorr_res,
   lrl_decorr_yj_res,
   lrl_decorr_log1p_res
 )
 
 resampling_comparison <-
-  map2(mod_resamples, mod_names, ~ best_rmse(res_obj = .x, model_name = .y)) %>%
+  map2(mod_resamples, mod_names, ~ best_rmse2(res_obj = .x, model_name = .y)) %>%
   reduce(inner_join, by = c("id", "id2")) %>%
   set_names(c("id", "id2", mod_names)) %>%
   unite(id, id, id2)
@@ -796,9 +796,9 @@ res_diff <- contrast_models(resampling_posterior, seed = 100)
 summary(res_diff)
 ```
 
-## Basic RF
+## RF
 
-basic pre-processing recipe & space-filled grid search
+### Basic pre-processing recipe & space-filled grid search
 
 ```{r}
 resamples_file <- "data/rf_base_res_cv10_new_split.rds"
@@ -839,7 +839,7 @@ rf_base_res %>%
   show_best("rmse")
 ```
 
-## Basic RF + log transformation of the target
+### log transformation of the target
 
 to compare with LRs
 
@@ -881,13 +881,59 @@ autoplot(rf_base_log_res)
 rf_base_log_res %>% show_best()
 ```
 
+### RF with Boruta
+
+```{r}
+base_log_boruta_recipe <- base_log_recipe %>% 
+  step_select_boruta(all_predictors(), outcome = "SalePrice", options = list(maxRuns = 100))
+
+base_log_boruta_recipe %>% prep() %>% juice() %>% ncol()
+```
+
+```{r}
+resamples_file <- "data/rf_base_log_bor_res_cv10_new_split.rds"
+
+if (file.exists(resamples_file)) {
+  print("Found resamples file")
+  rf_base_log_bor_res <- readRDS(resamples_file)
+} else {
+  # model workflow
+  rf_wf <- workflow() %>%
+    add_model(rf_spec) %>%
+    add_recipe(base_log_boruta_recipe)
+  
+  # tuning and resampling
+  rf_base_log_bor_res <- rf_wf %>%
+    tune_grid(
+      grid = 20,
+      resamples = cv_folds,
+      control = control_grid(save_pred = TRUE,
+                             save_workflow = TRUE),
+      metrics = cls_metrics
+    )
+  saveRDS(rf_base_log_bor_res, resamples_file)
+}
+
+autoplot(rf_base_log_bor_res)
+```
+
+
+#### Best models
+
+```{r}
+show_best(rf_base_log_bor_res)
+```
+
+
 ## MLP
 
-### Decorrelated predictors & YJ transformation
+### Decorrelated predictors + YJ transformation
 
 ```{r}
 mlp_nnet_spec <-
-  mlp(hidden_units = tune(), penalty = tune(), epochs = tune()) %>%
+  mlp(hidden_units = tune(), 
+      penalty = tune(), 
+      epochs = tune()) %>%
   set_engine('nnet', num.threads = 8) %>%
   set_mode('regression')
 
@@ -922,6 +968,42 @@ mlp_decorr_yj_res %>%
   show_best()
 ```
 
+### Decorrelated predictors + log1p transform
+
+```{r}
+resamples_file <- "data/mlp_decorr_log_res_cv10_new_split.rds"
+
+if (file.exists(resamples_file)) {
+  print("Found resamples file")
+  mlp_decorr_log_res <- readRDS(resamples_file)
+} else {
+  mlp_wf <- workflow() %>%
+    add_model(mlp_nnet_spec) %>%
+    add_recipe(decorr_log_recipe)
+  
+  mlp_decorr_log_res <- mlp_wf %>%
+    tune_grid(
+      grid = 20,
+      resamples = cv_folds,
+      control = control_grid(save_pred = TRUE,
+                             save_workflow = TRUE),
+      metrics = cls_metrics
+    )
+  saveRDS(mlp_decorr_log_res, resamples_file)
+}
+
+autoplot(mlp_decorr_log_res)
+```
+
+#### Best models
+
+```{r}
+show_best(mlp_decorr_log_res)
+```
+
+
+# Models comparison
+
 ```{r}
 # make a data frame
 best_models_rmse <-
@@ -931,14 +1013,16 @@ best_models_rmse <-
       lrl_decorr_yj_res,
       lrl_decorr_log1p_res,
       rf_base_log_res,
-      mlp_decorr_yj_res
+      mlp_decorr_yj_res,
+      mlp_decorr_log_res
     ),
     c(
       "LRL norm log",
       "LRL yj log",
       "LRL log",
       "RF log",
-      "MLP yj log"
+      "MLP yj",
+      "MLP log"
     ),
     ~ best_rmse(.x, .y)
   )
@@ -963,7 +1047,7 @@ ggplot(best_models_rmse,
 
 ```{r}
 xgb_spec <- boost_tree(
-  trees = 50,
+  trees = tune(),
   mtry = tune(),
   min_n = tune(),
   tree_depth = tune(),
