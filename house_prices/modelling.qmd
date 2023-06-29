@@ -18,6 +18,8 @@ library(finetune) # fro win-loss tuning
 library(tidyposterior)
 ```
 
+
+
 # EDA
 
 ## First look at the data 
@@ -29,6 +31,22 @@ dim(data)
 ```
 
 I should submit price predictions for the test data set
+
+## Feature engineering
+
+Let's make new features!
+
+Idea in the following chunk is borrowed from [here](https://www.kaggle.com/code/alexdrozd/500-100-score-0-11565)
+
+```{r}
+data <- data %>% 
+  mutate(Sold1 = YrSold - YearRemodAdd,
+         Sold2 = YearRemodAdd - YearBuilt,
+         Square = `1stFlrSF` + `2ndFlrSF` + TotalBsmtSF,
+         Square1 = WoodDeckSF + OpenPorchSF + EnclosedPorch + `3SsnPorch` + ScreenPorch,
+         Bath = BsmtFullBath + FullBath
+         )
+```
 
 ## Factors
 
@@ -331,7 +349,7 @@ library(ggforce)
 plot_dimred_results <- function(dat, color_by = SalePrice) {
   dat %>%
     select(-Id) %>% 
-    select(contains(c("01", "02", "03")), {{color_by}}) %>% 
+    select(contains(c("01", "02", "03", "04")), {{color_by}}) %>% 
     # Create the scatterplot matrix
     ggplot(aes(x = .panel_x, y = .panel_y, color = {{color_by}})) +
     geom_point(alpha = 0.4, size = 1) +
@@ -346,7 +364,7 @@ data_pca$template %>%
 
 ## UMAP
 
-```{r, fig.width=6, warning=FALSE}
+```{r, fig.width=9, warning=FALSE}
 decorq_recipe <- recipe(SalePrice ~ ., data = data) %>%
   update_role(Id, new_role = "ID") %>% 
   step_nzv(all_predictors()) %>%
@@ -373,22 +391,6 @@ data_umap <- prep(umap_recipe, retain = TRUE)
 data_umap$template %>% 
   plot_dimred_results() +
   ggtitle("UMAP")
-```
-
-# Feature engineering
-
-Let's make new features!
-
-Idea in the followinf chunk is borrowed from [here](https://www.kaggle.com/code/alexdrozd/500-100-score-0-11565)
-
-```{r}
-data <- data %>% 
-  mutate(Sold1 = YrSold - YearRemodAdd,
-         Sold2 = YearRemodAdd - YearBuilt,
-         Square = `1stFlrSF` + `2ndFlrSF` + TotalBsmtSF,
-         Square1 = WoodDeckSF + OpenPorchSF + EnclosedPorch + `3SsnPorch` + ScreenPorch,
-         Bath = BsmtFullBath + FullBath
-         )
 ```
 
 # Data split
@@ -436,7 +438,8 @@ base_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_impute_mean(all_numeric_predictors()) %>% 
   step_impute_knn(all_nominal_predictors()) %>% 
   step_normalize(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors())
+  step_dummy(all_nominal_predictors()) %>% 
+  step_nzv(all_predictors())
 
 base_log_recipe <- base_recipe %>% 
   step_log("SalePrice")
@@ -502,6 +505,23 @@ base_rfe_recipe %>%
   dim()
 ```
 
+
+## Predictors selected by Boruta
+
+```{r}
+set.seed(42)
+
+df_train_bor <-
+  base_log_recipe %>% prep() %>% juice() %>% select(-Id)
+
+bor_pred_selection <- Boruta::Boruta(SalePrice ~., data = df_train_bor, maxRuns=300)
+
+bor_pred_selection
+```
+
+```{r, fig.width=10}
+plot(bor_pred_selection)
+```
 
 # Modelling
 
@@ -885,7 +905,7 @@ rf_base_log_res %>% show_best()
 
 ```{r}
 base_log_boruta_recipe <- base_log_recipe %>% 
-  step_select_boruta(all_predictors(), outcome = "SalePrice", options = list(maxRuns = 100))
+  step_select_boruta(all_predictors(), outcome = "SalePrice", options = list(maxRuns = 300))
 
 base_log_boruta_recipe %>% prep() %>% juice() %>% ncol()
 ```
@@ -1012,7 +1032,7 @@ best_models_rmse <-
       lrl_decorr_res,
       lrl_decorr_yj_res,
       lrl_decorr_log1p_res,
-      rf_base_log_res,
+      rf_base_log_bor_res,
       mlp_decorr_yj_res,
       mlp_decorr_log_res
     ),
