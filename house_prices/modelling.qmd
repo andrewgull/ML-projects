@@ -127,7 +127,7 @@ data %>%
 
 `MSSubClass` is not numeric. Transfrom it to factor
 
-```{r}
+```{r, eval=FALSE}
 data <- data %>% 
   mutate(MSSubClass = as.factor(MSSubClass))
 ```
@@ -441,6 +441,16 @@ base_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_nzv(all_predictors())
 
+# after problems with step_impute_knn() try this
+base_recipe <- recipe(SalePrice ~ ., data = df_train) %>%
+  update_role(Id, new_role = "ID") %>% 
+  step_nzv(all_predictors()) %>%
+  step_impute_mean(all_numeric_predictors()) %>% 
+  step_impute_mode(all_nominal_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_nzv(all_predictors())
+
 base_log_recipe <- base_recipe %>% 
   step_log("SalePrice")
 
@@ -522,6 +532,12 @@ bor_pred_selection
 ```{r, fig.width=10}
 plot(bor_pred_selection)
 ```
+
+```{r}
+base_log_boruta_recipe <- base_log_recipe %>% 
+  step_select_boruta(all_predictors(), outcome = "SalePrice", options = list(maxRuns = 300))
+```
+
 
 # Modelling
 
@@ -904,9 +920,6 @@ rf_base_log_res %>% show_best()
 ### RF with Boruta
 
 ```{r}
-base_log_boruta_recipe <- base_log_recipe %>% 
-  step_select_boruta(all_predictors(), outcome = "SalePrice", options = list(maxRuns = 300))
-
 base_log_boruta_recipe %>% prep() %>% juice() %>% ncol()
 ```
 
@@ -1022,45 +1035,6 @@ show_best(mlp_decorr_log_res)
 ```
 
 
-# Models comparison
-
-```{r}
-# make a data frame
-best_models_rmse <-
-  map2_dfr(
-    list(
-      lrl_decorr_res,
-      lrl_decorr_yj_res,
-      lrl_decorr_log1p_res,
-      rf_base_log_bor_res,
-      mlp_decorr_yj_res,
-      mlp_decorr_log_res
-    ),
-    c(
-      "LRL norm log",
-      "LRL yj log",
-      "LRL log",
-      "RF log",
-      "MLP yj",
-      "MLP log"
-    ),
-    ~ best_rmse(.x, .y)
-  )
-
-ggplot(best_models_rmse,
-       aes(
-         y = mean,
-         x = model,
-         ymin = mean - std_err,
-         ymax = mean + std_err
-       )) +
-  geom_errorbar(aes(color = model)) +
-  geom_point(aes(y = mean, color = model)) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 0.95, hjust=1)) +
-  xlab("") +
-  ylab("RMSE")
-```
-
 ## XGB
 
 ### Boosted trees specification
@@ -1081,10 +1055,10 @@ xgb_spec <- boost_tree(
 ```
 
 
-### Basic preprocessing and win-loss grid search
+### Basic log boruta recipe and win-loss grid search
 
 ```{r}
-resamples_file <- "data/xgb_wl_res_cv5.rds" # the previous one was cv 10, with rmse 27.9 k
+resamples_file <- "data/xgb_base_log_bor_res_wl_cv10_new_split.rds"
 
 if (file.exists(resamples_file)) {
   print("Found resamples file")
@@ -1092,7 +1066,7 @@ if (file.exists(resamples_file)) {
 } else {
   xgb_wf <- workflow() %>%
     add_model(xgb_spec) %>%
-    add_recipe(base_recipe)
+    add_recipe(base_log_boruta_recipe)
   
   param_set <- extract_parameter_set_dials(xgb_wf) %>%
     finalize(x = df_train %>% select(-SalePrice))
@@ -1123,66 +1097,41 @@ xgb_wl_res %>%
   show_best("rmse")
 ```
 
-
-### Decorrelated recipe and win-loss search
-
-```{r, eval=FALSE}
-resamples_file <- "data/xgb_decorr_wl_res_cv5.rds"
-
-if (file.exists(resamples_file)) {
-  print("Found resamples file")
-  xgb_decorr_wl_res <- readRDS(resamples_file)
-} else {
-  xgb_wf <- workflow() %>%
-    add_model(xgb_spec) %>%
-    add_recipe(decorr_recipe)
-  
-  param_set <- extract_parameter_set_dials(xgb_wf) %>%
-    finalize(x = df_train %>% select(-SalePrice))
-  
-  xgb_decorr_wl_res <- xgb_wf %>%
-    tune_race_win_loss(
-      param_info = param_set,
-      resamples = cv_folds,
-      grid = 20,
-      control = control_race(
-        verbose_elim = TRUE,
-        save_pred = TRUE,
-        save_workflow = TRUE,
-        burn_in = 10
-      )
-    )
-  saveRDS(xgb_decorr_wl_res, resamples_file)
-}
-
-plot_race(xgb_decorr_wl_res)
-```
-
-#### Best models
-
-```{r, eval=FALSE}
-xgb_decorr_wl_res %>% 
-  show_best("rmse")
-```
-
-### RFE and win-loss search
+## LightGBM
 
 ```{r}
-resamples_file <- "data/xgb_rfe_wl_res_cv5.rds"
+library(bonsai)
+
+lgb_spec <- boost_tree(
+  mtry = tune(),
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("regression") %>%
+  translate()
+```
+
+### Basic log boruta recipe and win-loss grid search
+
+```{r}
+resamples_file <- "data/lgb_base_log_bor_res_wl_cv10_new_split_noknn.rds"
 
 if (file.exists(resamples_file)) {
   print("Found resamples file")
-  xgb_rfe_wl_res <- readRDS(resamples_file)
+  lgb_wl_res <- readRDS(resamples_file)
 } else {
-  # xgb specification is the same as above
-  xgb_wf <- workflow() %>%
-    add_model(xgb_spec) %>%
-    add_recipe(base_rfe_recipe)
+  lgb_wf <- workflow() %>%
+    add_model(lgb_spec) %>%
+    add_recipe(base_log_boruta_recipe)
   
-  param_set <- extract_parameter_set_dials(xgb_wf) %>%
+  param_set <- extract_parameter_set_dials(lgb_wf) %>%
     finalize(x = df_train %>% select(-SalePrice))
   
-  xgb_rfe_wl_res <- xgb_wf %>%
+  lgb_wl_res <- lgb_wf %>%
     tune_race_win_loss(
       param_info = param_set,
       resamples = cv_folds,
@@ -1195,190 +1144,50 @@ if (file.exists(resamples_file)) {
       )
     )
   
-  saveRDS(xgb_rfe_wl_res, resamples_file)
+  saveRDS(lgb_wl_res, resamples_file)
 }
 
-plot_race(xgb_rfe_wl_res)
+plot_race(lgb_wl_res)
 ```
 
-#### Best models
+### Best models
 
 ```{r}
-xgb_rfe_wl_res %>% 
-  show_best("rmse")
+show_best(lgb_wl_res)
 ```
 
-### RFE and Bayesian search
+
+# Models comparison
+
+## RMSE plot
 
 ```{r}
-resamples_file <- "data/xgb_rfe_bres_cv5.rds"
-
-if (file.exists(resamples_file)) {
-  print("Found resamples file")
-  xgb_rfe_bres <- readRDS(resamples_file)
-} else {
-  
-  # xgb specification is the same as above
-  xgb_wf <- workflow() %>%
-    add_model(xgb_spec) %>%
-    add_recipe(base_rfe_recipe)
-  
-  param_set <- extract_parameter_set_dials(xgb_wf) %>%
-    finalize(x = df_train %>% select(-SalePrice))
-  
-   xgb_rfe_bres <- xgb_wf %>% 
-     tune_bayes(
-      resamples = cv_folds,
-      param_info = param_set,
-      initial = 30,
-      iter = 20,
-      metrics = cls_metrics,
-      control = control_bayes(
-        no_improve = 20,
-        verbose = FALSE,
-        save_pred = TRUE,
-        save_workflow = TRUE
-      )
+res_list <- list(
+      lrl_decorr_res,
+      lrl_decorr_yj_res,
+      lrl_decorr_log1p_res,
+      rf_base_log_bor_res,
+      mlp_decorr_yj_res,
+      mlp_decorr_log_res,
+      xgb_wl_res,
+      lgb_wl_res
     )
 
-  saveRDS(xgb_rfe_bres, resamples_file)
-}
-
-autoplot(xgb_rfe_bres)
-```
-
-#### Best models
-
-```{r}
-xgb_rfe_bres %>% show_best("rmse")
-```
-
-
-### Basic recipe and full Bayesian search
-
-30 iterations
-
-```{r}
-resamples_file <- "data/xgb_base_bres_cv5.rds"
-
-if (file.exists(resamples_file)) {
-  print("Found resamples file")
-  xgb_base_bres <- readRDS(resamples_file)
-} else {
-  xgb_wf <- workflow() %>%
-    add_model(xgb_spec) %>%
-    add_recipe(base_recipe)
-  
-  param_set <- extract_parameter_set_dials(xgb_wf) %>%
-    finalize(x = df_train %>% select(-SalePrice))
-  
-  xgb_base_bres <- xgb_wf %>%
-    tune_bayes(
-      resamples = cv_folds,
-      param_info = param_set,
-      initial = 20,
-      iter = 30,
-      metrics = cls_metrics,
-      control = control_bayes(
-        no_improve = 20,
-        verbose = FALSE,
-        save_pred = TRUE,
-        save_workflow = TRUE
-      )
+mod_names <- c(
+      "LRL norm log",
+      "LRL yj log",
+      "LRL log",
+      "RF log bor",
+      "MLP yj",
+      "MLP log",
+      "XGB log bor wl",
+      "LGB log bor wl"
     )
-  
-  saveRDS(xgb_base_bres, resamples_file)
-  
-}
-
-autoplot(xgb_base_bres)
-```
-
-#### Autoplot
-
-```{r}
-xgb_base_bres %>% 
-  show_best("rmse")
-```
-
-
-### Decorrelated recipe and Bayesian search
-
-30 iterations
-
-```{r}
-resamples_file <- "data/xgb_dec_bres_cv5.rds"
-
-if (file.exists(resamples_file)) {
-  print("Found resamples file")
-  xgb_dec_bres <- readRDS(resamples_file)
-} else {
-  xgb_wf <- workflow() %>%
-    add_model(xgb_spec) %>%
-    add_recipe(decorr_recipe)
-  
-  param_set <- extract_parameter_set_dials(xgb_wf) %>%
-    finalize(x = df_train %>% select(-SalePrice))
-  
-  xgb_dec_bres <- xgb_wf %>%
-    tune_bayes(
-      resamples = cv_folds,
-      param_info = param_set,
-      initial = 20,
-      iter = 30,
-      metrics = cls_metrics,
-      control = control_bayes(
-        no_improve = 20,
-        verbose = FALSE,
-        save_pred = TRUE,
-        save_workflow = TRUE
-      )
-    )
-  saveRDS(xgb_dec_bres, resamples_file)
-}
-
-autoplot(xgb_dec_bres)
-```
-
-#### Autoplot
-
-```{r, fig.width=7}
-xgb_dec_bres %>% 
-  show_best("rmse")
-```
-
-
-## Compare mean RMSE between different model specifications
-
-```{r}
-# function to retrieve the best HP combination based on mean RMSE
-best_rmse <- function(res_obj, name){
-  res_obj %>% 
-    show_best("rmse") %>% 
-    select(mean, std_err) %>%
-    mutate(model = name) %>% 
-    slice_head(n = 1)
-}
 
 # make a data frame
 best_models_rmse <-
-  map2_dfr(
-    list(
-      lrl_decorr_res,
-      xgb_base_bres,
-      xgb_wl_res,
-      xgb_rfe_wl_res,
-      xgb_dec_bres
-    ),
-    c(
-      "LRL decorr",
-      "XGB base",
-      "XGB wl",
-      "XGB rfe wl",
-      "XGB dec"
-    ),
-    ~ best_rmse(.x, .y)
-  )
+  map2_dfr(res_list, mod_names,
+           ~ best_rmse(.x, .y))
 
 ggplot(best_models_rmse,
        aes(
@@ -1387,8 +1196,8 @@ ggplot(best_models_rmse,
          ymin = mean - std_err,
          ymax = mean + std_err
        )) +
-  geom_errorbar(aes(color = model)) +
-  geom_point(aes(y = mean, color = model)) +
+  geom_errorbar() +
+  geom_point(aes(y = mean)) +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.95, hjust=1)) +
   xlab("") +
   ylab("RMSE")
@@ -1407,32 +1216,15 @@ best_preprocessor <- function(res_obj) {
 }
 
 # function to make a df with AUCs from the best preproc
-best_rmse <- function(res_obj, model_name){
+best_rmse2 <- function(res_obj, model_name){
   res_obj %>%
     collect_metrics(summarize = FALSE) %>%
     filter(.metric == "rmse", .config == best_preprocessor(res_obj)) %>%
     select(id, id2, {{model_name}} := .estimate)
 }
 
-# generate distributions
-mod_names <- c("LRL decorr",
-               "RF base",
-               "XGB base",
-               "XGB wl",
-               "XGB rfe wl",
-               "XGB dec")
-
-mod_resamples <- list(
-  lrl_decorr_res,
-  rf_base_res,
-  xgb_base_bres,
-  xgb_wl_res,
-  xgb_rfe_wl_res,
-  xgb_dec_bres
-)
-
 resampling_comparison <-
-  map2(mod_resamples, mod_names, ~ best_rmse(res_obj = .x, model_name = .y)) %>%
+  map2(res_list, mod_names, ~ best_rmse2(res_obj = .x, model_name = .y)) %>%
   reduce(inner_join, by = c("id", "id2")) %>%
   set_names(c("id", "id2", mod_names)) %>%
   unite(id, id, id2)
@@ -1441,7 +1233,7 @@ resampling_comparison <-
 resampling_posterior <-
   perf_mod(
     resampling_comparison,
-    iter = 10000,
+    iter = 5000,
     seed = 100,
     refresh = 0,
     chains = 4,
@@ -1467,11 +1259,11 @@ summary(res_diff)
  and is then evaluated on the test set.
  
  
-## XGB base + Bayes
+## XGB log bor wl
 
 ```{r}
 xgb_spec <- boost_tree(
-  trees = 50,
+  trees = tune(),
   mtry = tune(),
   min_n = tune(),
   tree_depth = tune(),
@@ -1484,12 +1276,13 @@ xgb_spec <- boost_tree(
   set_mode("regression")
 
 # best model
-best_mod <- xgb_base_bres %>% 
+best_mod <- xgb_wl_res %>% 
   select_best("rmse")
 
 # use hyper parameters of the best model
 last_mod <-
   boost_tree(
+    trees = best_mod$trees,
     mtry = best_mod$mtry,
     min_n = best_mod$min_n,
     tree_depth = best_mod$tree_depth,
@@ -1507,7 +1300,7 @@ last_mod <-
 
 xgb_wf <- workflow() %>% 
   add_model(xgb_spec) %>% 
-  add_recipe(base_recipe) # the recipe here should be the one that was used for this model
+  add_recipe(base_log_boruta_recipe) # the recipe here should be the one that was used for this model
 
 # the last workflow
 last_wf <- 
@@ -1527,34 +1320,33 @@ final_fit %>%
 ```
 
 
-## XGB RFE + Bayes
+## LGB log bor wl
 
 ```{r}
 # best model
-best_mod <- xgb_rfe_bres %>% 
+best_mod <- lgb_wl_res %>% 
   select_best("rmse")
 
 # use hyper parameters of the best model
 last_mod <-
   boost_tree(
     mtry = best_mod$mtry,
-    min_n = best_mod$min_n,
+    trees = best_mod$trees,
     tree_depth = best_mod$tree_depth,
     learn_rate = best_mod$learn_rate,
-    loss_reduction = best_mod$loss_reduction,
-    sample_size = best_mod$sample_size,
-    stop_iter = best_mod$stop_iter
-  ) %>% 
-  set_engine("xgboost", num.threads=8) %>% 
+    min_n = best_mod$min_n,
+    loss_reduction = best_mod$loss_reduction
+  ) %>%
+  set_engine("lightgbm", num.threads = 8) %>%
   set_mode("regression") 
 
-xgb_wf <- workflow() %>% 
-  add_model(xgb_spec) %>% 
-  add_recipe(base_rfe_recipe) # the recipe here should be the one that was used for this model
+lgb_wf <- workflow() %>% 
+  add_model(lgb_spec) %>% 
+  add_recipe(base_log_boruta_recipe) # the recipe here should be the one that was used for this model
 
 # the last workflow
 last_wf <- 
-  xgb_wf %>%  
+  lgb_wf %>%  
   update_model(last_mod)
 
 # the last fit
@@ -1569,83 +1361,43 @@ final_fit %>%
   collect_metrics()
 ```
 
-
-## LRL + YJ and log
-
-```{r}
-
-# best model
-best_mod <- lrl_decorr_yj_res %>% 
-  select_best("rmse")
-
-# use hyper parameters of the best model
-last_mod <-
-  linear_reg(penalty = best_mod$penalty, mixture = best_mod$mixture) %>%
-  set_engine("glmnet", num.threads = 2) %>%
-  set_mode("regression")
-
-# update corr threshold in a copy of the chosen recipe
-decorr_yj_recipe_tuned <- decorr_yj_recipe
-decorr_yj_recipe_tuned$steps[[8]] <-
-  recipes::update(decorr_yj_recipe_tuned$steps[[8]], threshold = best_mod$corr_tune)
-
-lrl_wf <- workflow() %>% 
-  add_model(lrl_spec) %>% 
-  add_recipe(decorr_yj_recipe_tuned) # the recipe here should be the one that was used for this model
-
-# the last workflow
-last_wf <- 
-  lrl_wf %>%  
-  update_model(last_mod)
-
-# the last fit
-set.seed(34)
-
-final_fit <- 
-  last_wf %>% 
-  last_fit(data_split)
-
-
-final_fit %>% 
-  collect_metrics()
-```
-
-
 ## LRL + log
 
 ```{r}
 # best model
-best_mod <- lrl_decorr_log1p_res %>% 
+best_lrl <- lrl_decorr_log1p_res %>% 
   select_best("rmse")
 
 # use hyper parameters of the best model
-last_mod <-
-  linear_reg(penalty = best_mod$penalty, mixture = best_mod$mixture) %>%
-  set_engine("glmnet", num.threads = 2) %>%
+last_lrl <-
+  linear_reg(penalty = best_lrl$penalty, 
+             mixture = best_lrl$mixture) %>%
+  set_engine("glmnet", num.threads = 4) %>%
   set_mode("regression")
 
 # update corr threshold in a copy of the chosen recipe
 decorr_log_recipe_tuned <- decorr_log_recipe
 decorr_log_recipe_tuned$steps[[8]] <-
-  recipes::update(decorr_log_recipe_tuned$steps[[8]], threshold = best_mod$corr_tune)
+  recipes::update(decorr_log_recipe_tuned$steps[[8]], 
+                  threshold = best_lrl$corr_tune)
 
 lrl_wf <- workflow() %>% 
   add_model(lrl_spec) %>% 
   add_recipe(decorr_log_recipe_tuned) # the recipe here should be the one that was used for this model
 
 # the last workflow
-last_wf <- 
+lrl_last_wf <- 
   lrl_wf %>%  
-  update_model(last_mod)
+  update_model(last_lrl)
 
 # the last fit
 set.seed(34)
 
-final_fit <- 
-  last_wf %>% 
+lrl_final_fit <- 
+  lrl_last_wf %>% 
   last_fit(data_split)
 
-final_fit %>% 
+lrl_final_fit %>% 
   collect_metrics()
 ```
 
@@ -1677,11 +1429,19 @@ data_submission <- data_submission %>%
   ) %>% 
 mutate(across(is_character, ~ as_factor(.x)))
 
-data_submission <- data_submission %>% 
-  mutate(MSSubClass = as.factor(MSSubClass))
-
 # fake SalePrice to match the number of columns
-data_submission$SalePrice <- 0
+data_submission$SalePrice <- 1
+
+data_submission <- data_submission %>% 
+  mutate(Sold1 = YrSold - YearRemodAdd,
+         Sold2 = YearRemodAdd - YearBuilt,
+         Square = `1stFlrSF` + `2ndFlrSF` + TotalBsmtSF,
+         Square1 = WoodDeckSF + OpenPorchSF + EnclosedPorch + `3SsnPorch` + ScreenPorch,
+         Bath = BsmtFullBath + FullBath
+         )
+
+# data_submission <- data_submission %>%
+#   mutate(MSSubClass = as.factor(MSSubClass))
 
 final_train_fit <- 
   last_wf %>% 
@@ -1707,16 +1467,97 @@ pred_submission_df <- tibble(Id = data_submission$Id,
 pred_submission_df
 ```
 
+Identifying factors with non-matching levels (different order and/or number of levels) to fix the knn imputation
+
+```{r}
+train_levels <- df_train %>% select(is.factor) %>% map(~ levels(.x))
+
+sub_levels <- data_submission %>% select(is.factor) %>% map(~ levels(.x))
+
+non_matching_factors <-
+  map2(train_levels, sub_levels, ~ identical(.x, .y)) %>% 
+  as_tibble() %>% pivot_longer(cols = 1:43,
+                               names_to = "pred",
+                               values_to = "match")
+
+non_matching_factors %>% filter(!match)
+```
+
+I should relevel them using levels from the train data set
+
+```{r}
+to_relevel <- non_matching_factors %>% filter(!match) %>% pull(pred) 
+
+# this function doesn't work
+get_levels <- function(df, pred_name){
+  correct_lvls <- levels(df_train %>% pull({{pred_name}}))
+  pred_name = factor({{pred_name}}, correct_lvls)
+  return(df)
+}
+
+data_submission <-
+  data_submission %>%
+  mutate(
+    MSZoning = factor(MSZoning, levels(df_train$MSZoning)),
+    #Street = factor(Street, levels(df_train$Street)),
+    Alley = factor(Alley, levels(df_train$Alley)),
+    #LotShape = factor(LotShape, levels(df_train$LotShape)),
+    LandContour = factor(LandContour, levels(df_train$LandContour)),
+    Utilities = factor(Utilities, levels(df_train$Utilities)),
+    LotConfig = factor(LotConfig, levels(df_train$LotConfig)),
+    #LandSlope = factor(LandSlope, levels(df_train$LandSlope)),
+    Neighborhood = factor(Neighborhood, levels(df_train$Neighborhood)),
+    Condition1 = factor(Condition1, levels(df_train$Condition1)),
+    Condition2 = factor(Condition2, levels(df_train$Condition2)),
+    BldgType = factor(BldgType, levels(df_train$BldgType)), 
+    HouseStyle = factor(HouseStyle, levels(df_train$HouseStyle)),
+    RoofStyle = factor(RoofStyle, levels(df_train$RoofStyle)),
+    RoofMatl = factor(RoofMatl, levels(df_train$RoofMatl)),
+    Exterior1st = factor(Exterior1st, levels(df_train$Exterior1st)),
+    Exterior2nd = factor(Exterior2nd, levels(df_train$Exterior2nd)),
+    MasVnrType = factor(MasVnrType, levels(df_train$MasVnrType)),
+    ExterQual = factor(ExterQual, levels(df_train$ExterQual)),
+    #ExterCond = factor(MSZoning, levels(df_train$MSZoning)),
+    Foundation = factor(Foundation, levels(df_train$Foundation)),
+    BsmtQual = factor(BsmtQual, levels(df_train$BsmtQual)),
+    BsmtCond = factor(BsmtCond, levels(df_train$BsmtCond)),
+    BsmtFinType1 = factor(BsmtFinType1, levels(df_train$BsmtFinType1)),
+    BsmtFinType2 = factor(BsmtFinType2, levels(df_train$BsmtFinType2)),
+    Heating = factor(Heating, levels(df_train$Heating)),
+    HeatingQC = factor(HeatingQC, levels(df_train$HeatingQC)),
+    #CentralAir = factor(CentralAir, levels(df_train$CentralAir)),
+    Electrical = factor(Electrical, levels(df_train$Electrical)),
+    KitchenQual = factor(KitchenQual, levels(df_train$KitchenQual)),
+    Functional = factor(Functional, levels(df_train$Functional)),
+    FireplaceQu = factor(FireplaceQu, levels(df_train$FireplaceQu)),
+    GarageType = factor(GarageType, levels(df_train$GarageType)),
+    GarageFinish = factor(GarageFinish, levels(df_train$GarageFinish)),
+    GarageQual = factor(GarageQual, levels(df_train$GarageQual)),
+    GarageCond = factor(GarageCond, levels(df_train$GarageCond)),
+    #PavedDrive = factor(PavedDrive, levels(df_train$PavedDrive)),
+    PoolQC = factor(PoolQC, levels(df_train$PoolQC)),
+    Fence = factor(Fence, levels(df_train$Fence)),
+    MiscFeature = factor(MiscFeature, levels(df_train$MiscFeature)),
+    SaleType = factor(SaleType, levels(df_train$SaleType)),
+    SaleCondition = factor(SaleCondition, levels(df_train$SaleCondition))
+  )
+```
+
+
+---
+
+# Results
+
 - the first submission 0.17780 / place 3682 out of 4672
 
 - LRL YJ input - log target: 0.12912 / place 959 (899 excluding cheaters)
 
 - LRL log input - log target:  0.12719 / place 812 (752 excluding cheaters)
 
-- 
+- LGB 0.36 (???)
 
 ```{r}
 
-write_csv(pred_submission_df, "data/prediction_submission_log1p_mssub.csv", quote = "none")
+write_csv(pred_submission_df, "data/prediction_submission_lgb_log_bor_wl.csv", quote = "none")
 ```
 
