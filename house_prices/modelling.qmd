@@ -1118,6 +1118,7 @@ lgb_spec <- boost_tree(
 ### Basic log boruta recipe and win-loss grid search
 
 ```{r}
+# this is a resamples file that was created using simple mode imputation for categorial variables
 resamples_file <- "data/lgb_base_log_bor_res_wl_cv10_new_split_noknn.rds"
 
 if (file.exists(resamples_file)) {
@@ -1163,8 +1164,6 @@ show_best(lgb_wl_res)
 
 ```{r}
 res_list <- list(
-      lrl_decorr_res,
-      lrl_decorr_yj_res,
       lrl_decorr_log1p_res,
       rf_base_log_bor_res,
       mlp_decorr_yj_res,
@@ -1174,8 +1173,6 @@ res_list <- list(
     )
 
 mod_names <- c(
-      "LRL norm log",
-      "LRL yj log",
       "LRL log",
       "RF log bor",
       "MLP yj",
@@ -1363,7 +1360,7 @@ final_fit %>%
 
 ## LRL + log
 
-```{r}
+```{r, eval=F}
 # best model
 best_lrl <- lrl_decorr_log1p_res %>% 
   select_best("rmse")
@@ -1469,7 +1466,7 @@ pred_submission_df
 
 Identifying factors with non-matching levels (different order and/or number of levels) to fix the knn imputation
 
-```{r}
+```{r, eval=F}
 train_levels <- df_train %>% select(is.factor) %>% map(~ levels(.x))
 
 sub_levels <- data_submission %>% select(is.factor) %>% map(~ levels(.x))
@@ -1485,7 +1482,7 @@ non_matching_factors %>% filter(!match)
 
 I should relevel them using levels from the train data set
 
-```{r}
+```{r, eval=F}
 to_relevel <- non_matching_factors %>% filter(!match) %>% pull(pred) 
 
 # this function doesn't work
@@ -1554,10 +1551,11 @@ data_submission <-
 
 - LRL log input - log target:  0.12719 / place 812 (752 excluding cheaters)
 
-- LGB 0.36 (???)
+- LGB w knn 0.36 (???)
 
-```{r}
+- LGB w mode 0.40 (????)
 
-write_csv(pred_submission_df, "data/prediction_submission_lgb_log_bor_wl.csv", quote = "none")
+```{r, eval=F}
+write_csv(pred_submission_df, "data/prediction_submission_lgb_log_bor_wl_noknn.csv", quote = "none")
 ```
 
