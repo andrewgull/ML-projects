@@ -1,0 +1,721 @@
+---
+title: "smokers"
+author: "AG"
+format: html
+editor: source
+---
+
+## Data
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(ggpubr)
+library(finetune)
+library(bonsai)
+library(embed)
+library(themis)
+library(baguette)
+
+plot_validation_results <- function(dat, components) {
+  # dat - data table
+  # components - vector of components names to plot
+  dat %>%
+    select(-id) %>%
+    select(all_of(c(components, "smoking"))) %>% 
+    # Create the scatterplot matrix
+    ggplot(aes(x = .panel_x, y = .panel_y, color = smoking, fill = smoking)) +
+    geom_point(alpha = 0.2, size = 1) +
+    ggforce::geom_autodensity(alpha = .3) +
+    ggforce::facet_matrix(vars(-smoking), layer.diag = 2) + 
+    scale_color_brewer(palette = "Dark2") + 
+    scale_fill_brewer(palette = "Dark2")
+}
+
+data_train <- read_csv("data/train.csv.zip") %>% 
+  mutate(smoking = as_factor(if_else(smoking == 0, "no", "yes")))
+
+data_real <- read_csv("data/train_dataset.csv.zip") %>% 
+  mutate(smoking = as_factor(if_else(smoking == 0, "no", "yes")))
+
+data_full <- bind_rows(data_train, data_real)
+
+setdiff(names(data_train), names(data_real))
+```
+
+```{r}
+data_train %>% skimr::skim()
+```
+
+## EDA
+
+### Histograms as is
+
+```{r, fig.height=10}
+plot_hist <- function(varname, df){
+  df %>% 
+    ggplot(aes(.data[[varname]])) +
+    geom_histogram(aes(fill=smoking), bins = 100) +
+    geom_rug()
+}
+
+hist_list <- map(names(data_train)[2:23], ~ plot_hist(., data_train))
+
+ggarrange(plotlist = hist_list, nrow = 8, ncol = 3, common.legend = T)
+```
+
+Let's apply some transformations
+
+### Histograms after transform
+
+```{r, fig.height=10}
+recipe_log_trans <- recipe(smoking ~ ., data = data_train) %>% 
+  update_role(id, new_role = "ID") %>% 
+  step_zv(all_predictors()) %>% 
+  step_log(all_numeric_predictors(), offset = 1) %>% 
+  step_normalize(all_numeric_predictors())
+
+data_log <- recipe_log_trans %>% prep() %>% juice()
+
+hist_list <- map(names(data_log)[2:23], ~ plot_hist(., data_log))
+
+ggarrange(plotlist = hist_list, nrow = 8, ncol = 3, common.legend = T)
+```
+
+### Histograms after YJ transform
+
+```{r, fig.height=10}
+recipe_yj_trans <- recipe(smoking ~ ., data = data_train) %>% 
+  update_role(id, new_role = "ID") %>% 
+  step_zv(all_predictors()) %>% 
+  step_YeoJohnson(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors())
+
+data_yj <- recipe_yj_trans %>% prep() %>% juice()
+
+hist_list <- map(names(data_yj)[2:23], ~ plot_hist(., data_yj))
+
+ggarrange(plotlist = hist_list, nrow = 8, ncol = 3, common.legend = T)
+```
+
+### Boxplots
+
+```{r, fig.height=18}
+plot_box <- function(varname, df){
+  df %>% 
+    ggplot(aes(smoking, .data[[varname]])) +
+    geom_boxplot(aes(fill=smoking), notch = F) +
+    xlab("")
+}
+
+box_list <- map(names(data_log)[2:23], ~ plot_box(., data_log))
+
+ggarrange(plotlist = box_list, nrow = 6, ncol = 4, common.legend = T)
+
+```
+
+### Corrplot
+
+```{r, fig.width=8}
+library(ggcorrplot)
+
+corr_matrix <- round(cor(data_train[,-c(1, 24)]), 1) 
+
+ggcorrplot(corr_matrix,
+           hc.order = TRUE,
+           type = "upper",
+           lab = TRUE)
+```
+
+```{r, fig.width=9}
+corr_matrix <- round(cor(data_yj[,-c(1, 24)]), 1) 
+
+ggcorrplot(corr_matrix,
+           hc.order = TRUE,
+           type = "upper",
+           lab = TRUE)
+```
+
+### UMAP
+
+In the recipes below I do down-sampling
+
+#### Non-supervised
+
+```{r, fig.height=8, fig.width=8}
+umap_yj_recipe <- 
+  recipe(smoking ~ ., data = data_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>% 
+  step_YeoJohnson(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_downsample(smoking, under_ratio = 1, seed = 99) %>% 
+  step_umap(
+    all_numeric_predictors(),
+    num_comp = 10,
+    min_dist = 0.8,
+    neighbors = 25
+  ) %>% 
+  step_normalize(all_numeric_predictors())
+
+umap_results <- umap_yj_recipe %>%
+  prep() %>% 
+  juice() 
+
+
+umap_results %>% 
+  slice_sample(n = 1000, by = smoking) %>% 
+  plot_validation_results(c("UMAP01", "UMAP02", "UMAP03", "UMAP04")) +
+  ggtitle("UMAP unsupervised")
+```
+
+#### Supervised
+
+```{r, fig.height=8, fig.width=8}
+umap_sup_recipe <-
+  recipe(smoking ~ ., data = data_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_downsample(smoking, under_ratio = 1, seed = 99) %>% 
+  step_umap(
+    all_numeric_predictors(),
+    outcome = "smoking",
+    num_comp = 10,
+    min_dist = 0.8,
+    neighbors = 25
+  )
+
+umap_sup_results <- umap_sup_recipe %>%
+  prep() %>% 
+  juice() 
+
+
+umap_sup_results %>% 
+  slice_sample(n = 1000, by = smoking) %>% 
+  plot_validation_results(c("UMAP01", "UMAP02", "UMAP03", "UMAP04")) +
+  ggtitle("UMAP supervised")
+```
+
+### PCA
+
+```{r, fig.height=8, fig.width=8}
+rec_pca <- 
+  recipe(smoking ~ ., data = data_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_downsample(smoking, under_ratio = 1, seed = 99) %>% 
+  step_pca(all_numeric_predictors(), num_comp = 8) %>% 
+  step_normalize(all_numeric_predictors())
+
+rec_pca %>% 
+  prep() %>% 
+  juice() %>% 
+  slice_sample(n = 1000, by = smoking) %>% 
+  plot_validation_results(c("PC1", "PC2", "PC3", "PC4", "PC5")) +
+  ggtitle("Principal Component Analysis")
+```
+
+## Data split, CV folds, metric, basic recipe
+
+```{r}
+library(themis)
+
+# split
+set.seed(124)
+
+data_split <- initial_split(data_full, prop = 0.99, strata = smoking)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
+
+# folds
+cv_folds <- vfold_cv(df_train, strata = "smoking", v = 10, repeats = 5) 
+
+metrics <- metric_set(roc_auc)
+
+# recipe
+rec_base <-
+  recipe(smoking ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_downsample(smoking, under_ratio = 1, seed = 100) %>% 
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
+
+rec_base %>% prep() %>% juice() %>% group_by(smoking) %>% count()
+```
+
+## LR basic
+
+```{r}
+lr_spec <- logistic_reg(penalty = tune(),
+                        mixture = tune()) %>%
+  set_engine("glmnet")
+
+lr_wf <- workflow(preprocessor = rec_base,
+                  spec = lr_spec)
+
+lr_res <- lr_wf %>% 
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = FALSE),
+    metrics = metric_set(roc_auc)
+  )
+
+lr_res %>% show_best()
+
+lr_best_param <- select_best(lr_res)
+lr_model_final <- finalize_model(lr_spec, lr_best_param)
+# should data set be processed here?
+# proc and not-proc fit objects are not identical
+lr_fit_proc <- fit(lr_model_final, smoking ~ ., rec_base %>% prep() %>% juice())
+
+saveRDS(lr_fit_proc, "models/lr_base_fit_proc.rds")
+
+lr_res %>% show_best()
+```
+
+```{r}
+data_test <- read_csv("data/test.csv.zip", show_col_types = F)
+
+data_test_proc <- rec_base %>% prep() %>% bake(new_data = data_test)
+
+test_prediction <- predict(lr_fit_proc, data_test_proc, type="prob") %>% 
+  mutate(id = data_test$id, .before = .pred_yes) %>% 
+  rename("smoking" = .pred_yes) %>% 
+  select(-.pred_no)
+
+write_csv(x =  test_prediction, file = "submissions/test_prediction_lr_base.csv")
+```
+
+Public AUC = 0.84235
+
+## GBT basic + racing
+
+```{r}
+gbt_spec <- boost_tree(
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune(), 
+  sample_size = tune(), 
+  stop_iter = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("classification") %>%
+  translate()
+
+set.seed(124)
+
+gbt_wf_base <-
+  workflow(preprocessor = rec_base, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_base) %>%
+    finalize(x = df_train %>% select(-smoking))
+
+gbt_base_wl_res <- gbt_wf_base %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 40,
+    metrics = metric_set(roc_auc),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = FALSE,
+      burn_in = 10
+    )
+  )
+
+show_best(gbt_base_wl_res)
+```
+
+### Prediction
+
+```{r}
+gbt_best_param <- select_best(gbt_base_wl_res)
+gbt_model_final <- finalize_model(gbt_spec, gbt_best_param)
+# should data set be processed here?
+# proc and not-proc fit objects are not identical
+gbt_fit_proc <- fit(gbt_model_final, smoking ~ ., rec_base %>% prep() %>% juice())
+
+saveRDS(gbt_fit_proc, "models/gbt_base_fit_proc.rds")
+
+test_prediction <- predict(gbt_fit_proc, data_test_proc, type="prob") %>% 
+  mutate(id = data_test$id, .before = .pred_yes) %>% 
+  rename("smoking" = .pred_yes) %>% 
+  select(-.pred_no)
+
+write_csv(x =  test_prediction, file = "submissions/test_prediction_gbt_base.csv")
+```
+
+Public AUC = 0.86828
+
+## GBT with grid search and Bayes opt
+
+```{r}
+gbt_spec <- boost_tree(
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune(), 
+  sample_size = tune(), 
+  stop_iter = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("classification") %>%
+  translate()
+
+set.seed(124)
+
+gbt_wf_base <-
+  workflow(preprocessor = rec_base, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_base) %>%
+    finalize(x = df_train %>% select(-smoking))
+
+gbt_base_res <- gbt_wf_base %>%
+  tune_grid(
+    grid = 40,
+    param_info = param_set,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = FALSE),
+    metrics = metric_set(roc_auc)
+  )
+
+
+
+# Bayes
+gbt_base_bres <-
+      tune_bayes(
+        gbt_wf_base,
+        resamples = cv_folds,
+        initial = gbt_base_res,
+        iter = 30,
+        metrics = metric_set(roc_auc),
+        param_info = param_set,
+        control = control_bayes(
+          no_improve = 20,
+          save_pred = TRUE,
+          verbose = FALSE,
+          save_workflow = FALSE
+        )
+      )
+
+
+show_best(gbt_base_res)
+```
+
+```{r}
+show_best(gbt_base_bres)
+```
+
+### Prediction
+
+```{r}
+data_test <- read_csv("data/test.csv.zip", show_col_types = F)
+data_test_proc <- rec_base %>% prep() %>% bake(new_data = data_test)
+
+gbt_best_param <- select_best(gbt_base_bres)
+gbt_model_final <- finalize_model(gbt_spec, gbt_best_param)
+# should data set be processed here?
+# proc and not-proc fit objects are not identical
+gbt_fit_proc <- fit(gbt_model_final, smoking ~ ., rec_base %>% prep() %>% juice())
+
+saveRDS(gbt_fit_proc, "models/gbt_full_data_baseB_fit_proc.rds")
+
+test_prediction <- predict(gbt_fit_proc, data_test_proc, type="prob") %>% 
+  mutate(id = data_test$id, .before = .pred_yes) %>% 
+  rename("smoking" = .pred_yes) %>% 
+  select(-.pred_no)
+
+write_csv(x =  test_prediction, file = "submissions/test_prediction_gbt_baseB_full_data.csv")
+```
+
+Public ROC AUC = 0.87050 (place 360)
+Full data set public score = 0.86
+
+## MLP
+
+BAGging takes too long
+
+```{r}
+# rec_nocorr <- 
+#   recipe(defects ~ ., data = df_train) %>%
+#   update_role(id, new_role = "ID") %>%
+#   step_nzv(all_predictors()) %>%
+#   step_log(all_numeric_predictors(), offset = 1) %>%
+#   step_normalize(all_numeric_predictors()) %>% 
+#   step_downsample(defects, under_ratio = 1, seed = 100) %>% 
+#   step_corr(all_predictors(), threshold = tune("corr_tune"))
+
+mlp_spec <- mlp(
+      hidden_units = tune(),
+      penalty = tune(),
+      epochs = tune()) %>%
+      set_engine("nnet", num.threads = 4) %>%
+      set_mode("classification") 
+
+mlp_wf <-
+  workflow(preprocessor = rec_base, 
+           spec = mlp_spec)
+
+mlp_res <- mlp_wf %>% 
+  tune_grid(
+    grid = 40,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = FALSE),
+    metrics = metric_set(roc_auc)
+  )
+
+mlp_res %>% show_best()
+```
+
+```{r}
+data_test <- read_csv("data/test.csv.zip", show_col_types = F)
+data_test_proc <- rec_base %>% prep() %>% bake(new_data = data_test)
+
+mlp_best_param <- select_best(mlp_res)
+mlp_model_final <- finalize_model(mlp_spec, mlp_best_param)
+# should data set be processed here?
+# proc and not-proc fit objects are not identical
+mlp_fit_proc <- fit(mlp_model_final, smoking ~ ., rec_base %>% prep() %>% juice())
+
+saveRDS(mlp_fit_proc, "models/mlp_base_fit_proc.rds")
+
+test_prediction <- predict(mlp_fit_proc, data_test_proc, type="prob") %>% 
+  mutate(id = data_test$id, .before = .pred_yes) %>% 
+  rename("smoking" = .pred_yes) %>% 
+  select(-.pred_no)
+
+write_csv(x =  test_prediction, file = "submissions/test_prediction_mlp_base.csv")
+```
+
+Public score 0.766
+
+## Stacks
+
+### Specs
+
+```{r}
+library(stacks)
+
+ctrl_grid <- control_stack_grid()
+ctrl_res <- control_stack_resamples()
+
+# model definitions
+boost_tree_lgboost_spec <-
+  boost_tree(
+    tree_depth = tune(),
+    trees = tune(),
+    learn_rate = tune(),
+    min_n = tune(),
+    loss_reduction = tune(),
+    sample_size = tune(),
+    stop_iter = tune()
+  ) %>%
+  set_engine('lightgbm', num.threads=8) %>%
+  set_mode('classification') %>%
+  translate()
+
+logistic_reg_glmnet_spec <-
+  logistic_reg(penalty = tune(), mixture = tune()) %>%
+  set_engine('glmnet', num.threads=8)
+
+mlp_nnet_spec <-
+  mlp(hidden_units = tune(), penalty = tune(), epochs = tune()) %>%
+  set_engine('nnet', num.threads=8) %>%
+  set_mode('classification')
+```
+
+
+### Recipes
+
+```{r, fig.height=6}
+# recipes
+rec_base <-
+  recipe(defects ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_log(all_numeric_predictors(), offset = 1) %>%
+  step_normalize(all_numeric_predictors()) %>% 
+  step_downsample(defects, under_ratio = 1, seed = 100)
+
+rec_corr_tune <- 
+  recipe(defects ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_log(all_numeric_predictors(), offset = 1) %>%
+  step_normalize(all_numeric_predictors()) %>% 
+  step_downsample(defects, under_ratio = 1, seed = 100) %>% 
+  step_corr(all_predictors(), threshold = tune("corr_tune"))
+
+rec_corr <-
+  recipe(defects ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_log(all_numeric_predictors(), offset = 1) %>%
+  step_normalize(all_numeric_predictors()) %>% 
+  step_downsample(defects, under_ratio = 1, seed = 100) %>% 
+  step_corr(all_predictors(), threshold = 0.9)
+
+df_train_corr <- rec_corr %>% prep() %>% juice() 
+
+corr_matrix <- round(cor(df_train_corr[,-c(1, ncol(df_train_corr))]), 1) 
+
+# corr threshold 0.8 leaves only 6 predictors!
+ggcorrplot(corr_matrix,
+           hc.order = TRUE,
+           type = "upper",
+           lab = TRUE)
+```
+
+### Workflows
+
+```{r}
+lr_wf <- workflow(rec_corr, logistic_reg_glmnet_spec)
+
+mlp_wf <- workflow(rec_corr, mlp_nnet_spec)
+
+gbt_wf <- workflow(rec_corr, boost_tree_lgboost_spec)
+
+```
+
+
+### Tuning & validation
+
+Via repeated CV, grid of size 20
+
+```{r}
+
+# param_set <- extract_parameter_set_dials(gbt_wf) %>%
+#     finalize(x = df_train %>% select(-defects))
+
+gbt_res <- gbt_wf %>%
+  tune_grid(
+    grid = 20,
+    #param_info = param_set,
+    resamples = cv_folds,
+    control = ctrl_grid,
+    metrics = metric_set(roc_auc)
+  )
+
+lr_res <- lr_wf %>% 
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = ctrl_grid,
+    metrics = metric_set(roc_auc)
+  )
+
+mlp_res <- mlp_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = ctrl_grid,
+    metrics = metric_set(roc_auc)
+  )
+
+
+saveRDS(lr_res, "models/lr_res_stacks.rds")
+saveRDS(mlp_res, "models/mlp_res_stacks.rds")
+saveRDS(gbt_res, "models/gbt_res_stacks.rds")
+
+#lr_res <- readRDS("models/lr_res_stacks.rds")
+#mlp_res <- readRDS("models/mlp_res_stacks.rds")
+# gbt_res <- readRDS("models/gbt_res_stacks.rds")
+```
+
+```{r}
+gbt_res %>% show_best()
+```
+
+```{r}
+mlp_res %>% show_best()
+```
+
+
+### Stacking
+
+```{r}
+model_stacks <- stacks() %>% 
+  add_candidates(lr_res) %>% 
+  add_candidates(mlp_res) %>% 
+  add_candidates(gbt_res)
+
+as_tibble(model_stacks)
+```
+
+```{r}
+model_stack_blend <- model_stacks %>% 
+  blend_predictions(penalty = 10^(-6:-1),
+                    mixture = 1)
+
+autoplot(model_stack_blend)
+```
+
+```{r}
+autoplot(model_stack_blend, type = "members")
+```
+
+```{r}
+autoplot(model_stack_blend, type="weights")
+```
+
+### Look at params
+
+```{r}
+model_stack_fit <- model_stack_blend %>% fit_members()
+
+collect_parameters(model_stack_fit, "gbt_res")
+```
+
+### Prediction
+
+```{r}
+data_test <- read_csv("data/test.csv.zip", show_col_types = F)
+data_test_proc <- rec_base %>% prep() %>% bake(new_data = data_test)
+
+mlp_best_param <- select_best(mlp_res)
+mlp_model_final <- finalize_model(mlp_spec, mlp_best_param)
+# should data set be processed here?
+# proc and not-proc fit objects are not identical
+mlp_fit_proc <- fit(mlp_model_final, smoking ~ ., rec_base %>% prep() %>% juice())
+
+saveRDS(mlp_fit_proc, "models/mlp_base_fit_proc.rds")
+
+test_prediction <- predict(mlp_fit_proc, data_test_proc, type="prob") %>% 
+  mutate(id = data_test$id, .before = .pred_yes) %>% 
+  rename("smoking" = .pred_yes) %>% 
+  select(-.pred_no)
+
+write_csv(x =  test_prediction, file = "submissions/test_prediction_mlp_base.csv")
+```
+
+
+```{r}
+data_test <- read_csv("data/test.csv.gz", show_col_types = F)
+
+data_test_proc <- rec_corr %>% prep() %>% bake(new_data = data_test)
+
+# Don't process the test data here
+test_prediction <- predict(model_stack_fit, data_test, type="prob") %>% 
+  mutate(id = data_test$id, .before = .pred_yes) %>% 
+  rename("smoking" = .pred_yes) %>% 
+  select(-.pred_no)
+
+#write_csv(x =  test_prediction, file = "submissions/test_prediction_stacks3_corr.csv")
+```
+

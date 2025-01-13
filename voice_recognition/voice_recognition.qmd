@@ -1,0 +1,292 @@
+---
+title: "Untitled"
+format: html
+editor: source
+---
+
+# Libs
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(embed) # UMAP
+library(bonsai) # lightGBM
+library(ggforce)
+library(ggpubr)
+
+
+# functions
+make_roc <- function(mod_res, title, filtering_metric="roc_auc"){
+  
+  mod_best <- mod_res %>%
+    select_best(metric = filtering_metric)
+  
+  mod_roc <- mod_res %>% 
+    collect_predictions(parameters = mod_best) %>% 
+    roc_curve(label, .pred_female) %>% 
+    mutate(model = title)
+  
+  return(mod_roc)
+}
+```
+
+
+# Intro
+
+## Data
+
+```{r}
+data <- read_csv("data/voice.csv") %>% 
+  mutate(label = as.factor(label))
+
+data
+```
+
+## Summary
+
+```{r}
+data %>% 
+  skimr::skim() %>% 
+  skimr::yank("numeric")
+```
+
+```{r}
+data %>% 
+  skimr::skim() %>% 
+  skimr::yank("factor")
+```
+
+# Plots
+
+```{r, fig.height=12}
+data %>% 
+  pivot_longer(cols = c(1:20), names_to = "predictor", values_to = "value") %>% 
+  #mutate(value_scaled = scale(value)) %>%
+  filter(predictor == "meanfreq") %>% 
+  ggplot(aes(label, value)) +
+  geom_boxplot() +
+  geom_violin(alpha=0.1) +
+  facet_grid(rows = vars(predictor))
+
+make_box <- function(column_name){
+  ggplot(data, aes(label, .data[[column_name]])) +
+    geom_boxplot() + 
+    geom_violin(alpha = 0.1) +
+    xlab("")
+}
+
+plot_list <- map(colnames(data)[1:20], ~ make_box(.x))
+
+ggarrange(plotlist = plot_list, ncol = 4, nrow = 5)
+```
+
+
+
+
+# Split
+
+```{r}
+set.seed(124)
+
+data_split <- initial_split(data, prop = 0.85)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
+
+cv_folds <- vfold_cv(df_train, v = 10, repeats = 5) 
+
+cls_metrics <- metric_set(accuracy, roc_auc)
+```
+
+# Clustering
+
+```{r}
+pca_recipe <- recipe(label ~ ., data = df_train) %>%
+  update_role(label, new_role = "outcome") %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_pca(all_predictors(), threshold = .8) %>% 
+  step_normalize(all_numeric_predictors())
+
+data_pca <- pca_recipe %>% prep() %>% juice()
+
+data_pca <- prep(pca_recipe, retain = TRUE)
+
+data_pca$template %>% dim()
+```
+
+# Preprocessing
+
+```{r}
+yj_log_recipe <- recipe(label ~ ., data = df_train) %>%
+  step_nzv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors())
+
+base_recipe <- recipe(label ~ ., data = df_train) %>%
+  step_nzv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+```
+
+```{r}
+sdev <- data_pca$steps[[4]]$res$sdev
+percent_variation <- sdev^2 / sum(sdev^2)
+
+var_df <- data.frame(PC = paste0("PC", 1:length(sdev)),
+                     var_explained = percent_variation,
+                     stringsAsFactors = FALSE)
+
+var_df <- var_df %>% 
+  mutate(var_cum_sum = cumsum(var_explained))
+
+var_df
+```
+
+```{r, warning=FALSE, fig.width=10}
+plot_dimred_results <- function(dat, color_by = label) {
+  dat %>%
+    select(contains(c("1", "2", "3", "4")), {{color_by}}) %>% 
+    # Create the scatterplot matrix
+    ggplot(aes(x = .panel_x, y = .panel_y, color = {{color_by}})) +
+    geom_point(alpha = 0.4, size = 1) +
+    geom_autodensity(alpha = .3) +
+    facet_matrix(vars(-{{color_by}}), layer.diag = 2) 
+}
+
+data_pca$template %>%
+  plot_dimred_results() +
+  ggtitle("Principal Component Analysis")
+```
+
+# UMAP
+
+```{r, fig.width=10, warning=FALSE}
+umap_recipe <- recipe(label ~ ., data = df_train) %>%
+  step_normalize(all_numeric_predictors()) %>% 
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_umap(
+    all_numeric_predictors(),
+    num_comp = 10,
+    min_dist = 0.1,
+    neighbors = 30
+  )
+
+data_umap <- prep(umap_recipe, retain = TRUE)
+
+data_umap$template %>% 
+  plot_dimred_results() +
+  ggtitle("UMAP")
+```
+
+# Models
+
+```{r}
+lrl_spec <- logistic_reg(penalty = tune(),
+                      mixture = tune()) %>%
+  set_engine("glmnet", num.threads = 8) %>%
+  set_mode("classification")
+
+lgb_spec <- boost_tree(
+  mtry = tune(),
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune(), 
+  sample_size = tune(), 
+  stop_iter = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("classification") %>%
+  translate()
+```
+
+# Tuning and validation
+
+## LR
+
+```{r}
+lrl_wf <- workflow() %>%
+  add_model(lrl_spec) %>%
+  add_recipe(yj_log_recipe)
+
+# tuning and resampling
+lrl_yj_log_res <- lrl_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = cls_metrics
+  )
+
+autoplot(lrl_yj_log_res)
+```
+
+```{r}
+show_best(lrl_yj_log_res, metric = "accuracy")
+```
+
+```{r}
+show_best(lrl_yj_log_res, metric = "roc_auc")
+```
+
+```{r}
+make_roc(lrl_yj_log_res, "LR") %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+  geom_path(lwd = 0.5, alpha = 0.8) +
+  geom_abline(lty = 3) +
+  coord_equal() +
+  #scale_color_viridis_d(direction = 1, option = "B")
+  scale_color_brewer(palette = "Set1") +
+  ggtitle("LR")
+```
+
+
+## GBT
+
+```{r}
+library(finetune)
+
+lgb_wf <- workflow() %>%
+  add_model(lgb_spec) %>%
+  add_recipe(base_recipe)
+
+param_set <- extract_parameter_set_dials(lgb_wf) %>%
+  finalize(x = df_train %>% select(-label))
+
+lgb_wl_res <- lgb_wf %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+plot_race(lgb_wl_res)
+```
+
+```{r}
+show_best(lgb_wl_res, metric = "roc_auc")
+```
+
+```{r}
+show_best(lgb_wl_res, metric = "accuracy")
+```
+
+```{r}
+make_roc(lgb_wl_res, "GBT") %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+  geom_path(lwd = 0.5, alpha = 0.8) +
+  geom_abline(lty = 3) +
+  coord_equal() +
+  #scale_color_viridis_d(direction = 1, option = "B")
+  scale_color_brewer(palette = "Set1") +
+  ggtitle("GBT")
+```
