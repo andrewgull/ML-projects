@@ -1,6 +1,17 @@
 *.RData
 .Rproj.user
+__packages
+*.Rproj
 *.zip
 .Rhistory
 *.Rtab
 *.rds
+*.rdb
+*.rdx
+*.csv
+*.png
+*.csv.gz
+*.woff
+*.jpg
+*.js
+*.css
