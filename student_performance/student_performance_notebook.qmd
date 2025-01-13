@@ -1,0 +1,69 @@
+---
+title: "Student Performance"
+author: "A.G."
+date-modified: "last update: `r format(Sys.Date(), format = '%d %B %Y')`"
+format: 
+  html:
+    toc: true
+    toc-depth: 2
+    toc-title: Contents
+    toc-location: left
+    df-print: paged
+    standalone: true
+    code-fold: true
+editor: source
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = F)
+library(skimr)
+library(tidyverse)
+library(caret)
+library(DMwR) # installed via archive: install.packages("/Path/to/DMwR_0.4.1.tar.gz", repos=NULL, type="source" )
+library(ROCR)
+```
+
+
+# Intro
+
+This data set consists of the marks secured by the students in various subjects.
+
+Example Research Questions:
+
+  - How effective is the test preparation course?
+  
+  - Which major factors contribute to test outcomes?
+  
+  - What would be the best way to improve student scores on each test?
+  
+  - What patterns and interactions in the data can you find? Let me know in the comments section below.
+
+# Read the data
+
+```{r}
+df <- read_csv("data/exams.csv", 
+               col_types = "fffffddd", 
+               name_repair = "universal")
+
+# for better readability remove 'group' in 'race/ethnicity'
+df$race.ethnicity <- as.factor(str_replace(df$race.ethnicity, "group ", ""))
+
+df
+```
+
+# Descriptive statistics
+
+```{r}
+skim_desc <- skim(df)
+
+skim_desc %>%
+  yank("factor")
+```
+
+```{r}
+skim_desc <- skim(df)
+
+skim_desc %>%
+  yank("numeric")
+```
+

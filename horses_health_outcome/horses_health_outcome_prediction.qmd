@@ -1,0 +1,1069 @@
+---
+title: "Health Outcome of Horses"
+author: "AG"
+format: html
+editor: source
+---
+
+# Libs
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(embed)
+library(skimr)
+library(themis)
+```
+
+
+# Data
+
+```{r}
+data_synth <- read_csv("data/train.csv", show_col_types = F) %>% 
+  mutate(across(is_character, ~ as_factor(.x)),
+         hospital_number = as_factor(hospital_number))
+
+data_synth %>% 
+  skim()
+```
+
+```{r}
+data_orig <- read_csv("data/horse_original.csv", show_col_types = F) %>% 
+  mutate(across(is_character, ~ as_factor(.x)),
+         hospital_number = as_factor(hospital_number))
+
+data_orig %>% 
+  skim()
+```
+
+# EDA
+
+## Boxplots
+
+
+```{r, fig.width=10, fig.height=10}
+make_box <- function(df, column_name) {
+  ggplot(df, aes(outcome, .data[[column_name]])) +
+    geom_boxplot(varwidth = T) +
+    geom_violin(alpha = 0.1) +
+    xlab("")
+}
+
+box_list <- map(colnames(select(data_synth, where(is.numeric)))[2:11],
+                ~ make_box(data_synth, .x))
+
+ggpubr::ggarrange(plotlist =  box_list, ncol = 3, nrow = 4)
+```
+
+### Closer look at the lesions
+
+```{r}
+data_synth %>% 
+  ggplot(aes(lesion_1)) +
+  geom_histogram(aes(fill=outcome)) +
+  facet_grid(rows = vars(outcome))
+```
+
+```{r}
+data_synth %>% 
+  ggplot(aes(lesion_2)) +
+  geom_histogram(aes(fill=outcome), bins=60) +
+  facet_grid(rows = vars(outcome))
+```
+
+```{r}
+data_synth %>% 
+  ggplot(aes(lesion_3)) +
+  geom_histogram(aes(fill=outcome), bins=60) +
+  facet_grid(rows = vars(outcome))
+```
+
+```{r}
+data_synth %>% pull(lesion_1) %>% as_factor() %>% summary
+```
+
+```{r}
+data_synth %>% pull(lesion_2) %>% as_factor() %>% summary
+```
+
+```{r}
+data_synth %>% pull(lesion_3) %>% as_factor() %>% summary
+```
+
+```{r}
+data_synth %>% group_by(outcome) %>% select(contains("lesion_"))
+```
+
+## Proportions bar plots
+
+Excluding hospital number
+
+```{r, fig.width=10, fig.height=10}
+make_prop <- function(df, column_name, pos = "fill") {
+  ggplot(df, aes(.data[[column_name]])) +
+    geom_bar(aes(fill = outcome), position = pos) +
+    ylab("") + theme(axis.text.x = element_text(
+      angle = 45,
+      vjust = 0.5,
+      hjust = 0.5,
+      size = 8
+    )) +
+    scale_fill_brewer(palette="Dark2")
+}
+
+
+prop_list <-
+  map(colnames(select(data_synth, where(is.factor)))[c(1, 2, 4:17)],
+      ~ make_prop(data_synth, .x))
+
+ggpubr::ggarrange(plotlist =  prop_list, ncol = 4, nrow = 4, common.legend = T)
+```
+
+Hospital number
+
+```{r, fig.width=14, fig.height=6}
+make_prop(data_synth, "hospital_number")
+```
+
+### Frequencies of categorical variables
+
+Excluding hospital number
+
+```{r, fig.width=10, fig.height=10}
+prop_list <-
+  map(colnames(select(data_synth, where(is.factor)))[c(1, 2, 4:17)],
+      ~ make_prop(data_synth, .x, pos = "stack"))
+
+ggpubr::ggarrange(plotlist =  prop_list, ncol = 4, nrow = 4, common.legend = T)
+```
+
+
+## UMAP
+
+```{r, fig.width=6, fig.height=6}
+library(ggforce)
+
+plot_dimred_results <- function(dat, color_by = outcome) {
+  dat %>%
+    select(-id) %>% 
+    select(contains(c("01", "02", "03", "04")), {{color_by}}) %>% 
+    # Create the scatterplot matrix
+    ggplot(aes(x = .panel_x, y = .panel_y, color = {{color_by}})) +
+    geom_point(alpha = 0.4, size = 1) +
+    geom_autodensity(alpha = .3) +
+    facet_matrix(vars(-{{color_by}}), layer.diag = 2) +
+    scale_color_brewer(palette="Dark2")
+}
+
+umap_recipe <- recipe(outcome ~ ., data = data_synth) %>%
+  update_role(id, new_role = "ID") %>% 
+  step_lencode_glm(hospital_number, outcome = "outcome") %>% 
+  step_other(all_nominal()) %>% 
+  step_nzv(all_predictors()) %>%
+  step_select(-c(hospital_number, contains("lesion_"))) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = T) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_umap(
+    all_numeric_predictors(),
+    num_comp = 10,
+    min_dist = 0.01,
+    neighbors = 25
+  )
+
+umap_results <- prep(umap_recipe, retain = TRUE)
+
+umap_results$template %>% 
+  plot_dimred_results() +
+  ggtitle("UMAP")
+```
+
+```{r, fig.width=6, fig.height=6}
+umap_sup_recipe <- recipe(outcome ~ ., data = data_synth) %>%
+  update_role(id, new_role = "ID") %>% 
+  step_lencode_glm(hospital_number, outcome = "outcome") %>% 
+  step_other(all_nominal()) %>% 
+  step_nzv(all_predictors()) %>%
+  step_select(-c(hospital_number, contains("lesion_"))) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = T) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_umap(
+    all_numeric_predictors(),
+    num_comp = 10,
+    min_dist = 0.01,
+    neighbors = 25, 
+    outcome = "outcome"
+  )
+
+umap_sup_results <- prep(umap_sup_recipe, retain = TRUE)
+
+umap_sup_results$template %>% 
+  plot_dimred_results() +
+  ggtitle("UMAP supervised")
+```
+
+## PCA
+
+```{r}
+pca_recipe <- recipe(outcome ~ ., data = data_synth) %>%
+  update_role(id, new_role = "ID") %>%
+  update_role(outcome, new_role = "outcome") %>% 
+  step_dummy(all_nominal_predictors(), one_hot = T) %>% 
+  step_zv(all_predictors()) %>% 
+  step_nzv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_pca(all_predictors(), threshold = .8) %>% 
+  step_normalize(all_numeric_predictors())
+
+pca_results <- prep(pca_recipe, retain = TRUE)
+
+pca_results$template %>% dim()
+```
+
+```{r, fig.width=8, fig.height=8}
+pca_results$template %>% 
+  plot_dimred_results() +
+  ggtitle("PCA")
+```
+
+# Modelling on synth data
+
+## Split (non-stratified)
+
+```{r}
+set.seed(124)
+
+data_split <- initial_split(data_synth, prop = 0.99)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
+
+cv_folds <- vfold_cv(df_train, v = 10, repeats = 5) 
+
+f1_micro <- metric_tweak("f1_micro", f_meas, estimator = "micro")
+```
+
+## Recipes
+
+```{r}
+# my basic recipe with YJ transform
+recipe_base <- recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_nzv(all_nominal_predictors()) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# basic recipe with no lesions and no hospital number
+recipe_base_no_lesions_hosp_number <- recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_select(-c(hospital_number, contains("lesion_"))) %>% 
+  step_nzv(all_nominal_predictors()) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# base recipe with SMOTE
+recipe_base_smote <- recipe_base %>% 
+  step_smote(outcome, over_ratio = 1, seed = 100)
+
+# SMOTE will equalize outcome variable
+
+# basic + no lesions + [factor -> lencode_glm] of hospital_number
+recipe_base_no_lesions_lecode_hosp_number <-
+  recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_select(-contains("lesion_")) %>%
+  step_mutate(hospital_number = as_factor(hospital_number)) %>% 
+  step_lencode_glm(hospital_number, outcome = "outcome") %>% 
+  step_nzv(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# same but with SMOTE
+recipe_base_no_lesions_lecode_hosp_number_smote <-
+  recipe_base_no_lesions_lecode_hosp_number %>% 
+  step_smote(outcome, over_ratio = 1, seed = 100)
+
+# basic + no lesions + [factor -> embed] of hospital_number
+recipe_base_no_lesions_embed_hosp_number <-
+  recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_select(-contains("lesion_")) %>%
+  step_mutate(hospital_number = as_factor(hospital_number)) %>% 
+  step_embed(hospital_number, outcome = "outcome") %>% 
+  step_nzv(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# # same but with SMOTE
+recipe_base_no_lesions_embed_hosp_number_smote <-
+  recipe_base_no_lesions_embed_hosp_number %>% 
+  step_smote(outcome, over_ratio = 1, seed = 100)
+
+# basic + embed lesions + embed hospital_number
+recipe_base_embed_lesions_hosp_number <-
+  recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_mutate(across(contains("lesion_"), as.character)) %>% 
+  step_mutate(lesions_123 = paste(lesion_1, lesion_2, lesion_3, sep="_")) %>% 
+  step_select(-contains("lesion_")) %>%
+  step_mutate(hospital_number = as_factor(hospital_number)) %>% 
+  step_embed(hospital_number, outcome = "outcome") %>% 
+  step_embed(lesions_123, outcome = "outcome") %>% 
+  step_nzv(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+recipe_base_lencode_lesions_embed_hosp_number <-
+  recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_mutate(across(contains("lesion_"), as.factor)) %>% 
+  step_mutate(lesions_123 = paste(lesion_1, lesion_2, lesion_3, sep="_")) %>% 
+  step_select(-contains("lesion_")) %>%
+  step_mutate(hospital_number = as_factor(hospital_number)) %>% 
+  step_embed(hospital_number, outcome = "outcome") %>% 
+  step_lencode_glm(lesions_123, outcome = "outcome") %>% 
+  step_nzv(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+recipe_base_pooling <- recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_other(all_nominal_predictors()) %>% 
+  #step_nzv(all_nominal_predictors()) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+
+```
+
+
+## LR standalone
+
+```{r}
+data_synth %>% select(where(is.factor)) %>% 
+  summary
+
+# lencode all that has > 4 categories (remember step_other!)
+recipe_base_lencode4 <- recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_other(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%
+  step_lencode_glm(hospital_number, outcome = "outcome") %>% 
+  step_lencode_glm(temp_of_extremities, outcome = "outcome") %>% 
+  step_lencode_glm(peripheral_pulse, outcome = "outcome") %>% 
+  step_lencode_glm(mucous_membrane, outcome = "outcome") %>% 
+  step_lencode_glm(pain, outcome = "outcome") %>% 
+  step_lencode_glm(peristalsis, outcome = "outcome") %>% 
+  step_lencode_glm(abdominal_distention, outcome = "outcome") %>% 
+  step_lencode_glm(rectal_exam_feces, outcome = "outcome") %>% 
+  step_lencode_glm(abdomen, outcome = "outcome") %>% 
+  step_dummy(all_nominal_predictors(), one_hot = T) %>% 
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
+  
+
+lr_spec <- multinom_reg(penalty = tune(),
+                        mixture = tune()) %>% 
+  set_engine("glmnet", num.threads=6)
+
+lr_lencode4_wf <- workflow() %>% 
+  add_model(lr_spec) %>% 
+  add_recipe(recipe_base_lencode4)
+
+lr_lencode4_resamples <- lr_lencode4_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = metric_set(f1_micro)
+  )
+
+saveRDS(lr_lencode4_resamples, "models/lr_lencode4_res_synth_only.rds")
+
+autoplot(lr_lencode4_resamples)
+```
+
+```{r}
+show_best(lr_lencode4_resamples, metric = "f1_micro")
+```
+
+
+## Workflow sets
+
+### LR
+
+```{r}
+lr_spec <- multinom_reg(penalty = tune(),
+                        mixture = tune()) %>% 
+  set_engine("glmnet", num.threads=6)
+
+model_specs_list <- list(LR = lr_spec)
+
+recipes_list <- list(base = recipe_base,
+                     pool = recipe_base_pooling,
+                     no = recipe_base_no_lesions_hosp_number, 
+                     lencode1 =recipe_base_no_lesions_lecode_hosp_number, 
+                     smote1 = recipe_base_no_lesions_lecode_hosp_number_smote, 
+                     embed = recipe_base_no_lesions_embed_hosp_number, 
+                     smote2 = recipe_base_no_lesions_embed_hosp_number_smote,
+                     lencode2 = recipe_base_lencode_lesions_embed_hosp_number)
+
+models_set_lr <-
+  workflow_set(preproc = recipes_list,
+               models = model_specs_list,
+               cross = TRUE)
+
+set.seed(124)
+
+lr_recipes_set <-
+  models_set_lr %>%
+  workflow_map(
+    "tune_grid",
+    resamples = cv_folds,
+    grid = 20,
+    metrics = metric_set(f1_micro),
+    verbose = TRUE,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE)
+  )
+saveRDS(lr_recipes_set, "models/lr_wfset_res.rds")
+
+autoplot(lr_recipes_set, select_best = T)
+```
+
+```{r}
+rank_results(lr_recipes_set, rank_metric = "f1_micro", select_best = TRUE) %>% 
+  select(wflow_id, mean, std_err, rank)
+```
+
+So, the best recipe is `recipe_base_no_lesions_hosp_number` and `recipe_base_no_lesions_embed_hosp_number`
+
+
+## GBM with several recipes
+
+### Base
+
+```{r}
+library(bonsai)
+library(finetune)
+
+gbt_spec <- boost_tree(
+  mtry = tune(),
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune(), 
+  sample_size = tune(), 
+  stop_iter = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("classification") %>%
+  translate()
+
+set.seed(124)
+
+gbt_wf_base <-
+  workflow(preprocessor = recipe_base, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_base) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_base_wl_res <- gbt_wf_base %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_base_wl_res, "models/lgb_base_wl_res_synth_only.rds")
+
+plot_race(lgb_base_wl_res)
+```
+
+
+```{r}
+show_best(lgb_base_wl_res, metric="f1_micro")
+```
+
+
+### nlnhn - no lesions and no hospital number
+
+```{r}
+
+
+# model_specs_list <- list(BT = gbt_spec)
+# 
+# recipes_list <- list(recipe_base, 
+#                      recipe_base_no_lesions_hosp_number, 
+#                      recipe_base_no_lesions_lecode_hosp_number, 
+#                      recipe_base_no_lesions_embed_hosp_number)
+# 
+# wf_set_gbt <-
+#   workflow_set(preproc = recipes_list,
+#                models = model_specs_list,
+#                cross = TRUE)
+
+set.seed(124)
+
+# models_set_gbt <- models_set_gbt %>%
+#   workflow_map(
+#     fn = "tune_race_win_loss",
+#     param_info = param_set,
+#     resamples = cv_folds,
+#     grid = 20,
+#     metrics = metric_set(f1_micro),
+#     verbose = TRUE,
+#     control = control_grid(save_pred = TRUE,
+#                            save_workflow = TRUE)
+#   )
+
+# nlnhn - no lesions and no hospital number
+gbt_wf_nlnhn <-
+  workflow(preprocessor = recipe_base_no_lesions_hosp_number, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_nlnhn) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_nlnhn_wl_res <- gbt_wf_nlnhn %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_nlnhn_wl_res, "models/lgb_nlnhn_wl_res_synth_only.rds")
+```
+
+
+```{r}
+plot_race(lgb_nlnhn_wl_res)
+```
+
+```{r}
+show_best(lgb_nlnhn_wl_res, metric="f1_micro")
+```
+
+### nlehn - no_lesions_embed_hosp_number
+
+```{r}
+set.seed(124)
+
+# nlehn - no lesions and embed hospital number
+gbt_wf_nlehn <-
+  workflow(preprocessor = recipe_base_no_lesions_embed_hosp_number, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_nlehn) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_nlehn_wl_res <- gbt_wf_nlehn %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_nlehn_wl_res, "models/lgb_nlehn_wl_res_synth_only.rds")
+```
+
+
+```{r}
+plot_race(lgb_nlehn_wl_res)
+```
+
+```{r}
+show_best(lgb_nlehn_wl_res, metric="f1_micro")
+```
+
+### elehn - embed joined lesions and hospital number
+
+```{r}
+set.seed(124)
+
+# elehn - embed lesions and embed hospital number
+gbt_wf_elehn <-
+  workflow(preprocessor = recipe_base_embed_lesions_hosp_number, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_elehn) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_elehn_wl_res <- gbt_wf_elehn %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_elehn_wl_res, "models/lgb_elehn_wl_res_synth_only.rds")
+
+plot_race(lgb_elehn_wl_res)
+```
+
+### llehn - lencode joined lesions and embed hospital number
+
+```{r}
+set.seed(124)
+
+# llehn - lencode lesions and embed hospital number
+gbt_wf_llehn <-
+  workflow(preprocessor = recipe_base_lencode_lesions_embed_hosp_number, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_llehn) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_llehn_wl_res <- gbt_wf_llehn %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_llehn_wl_res, "models/lgb_llehn_wl_res_synth_only.rds")
+
+plot_race(lgb_llehn_wl_res)
+```
+```{r}
+show_best(lgb_llehn_wl_res, metric="f1_micro")
+```
+
+### bp - Base and pooling of rare categories (step_other)
+
+```{r}
+set.seed(124)
+
+# bp - base + pooling
+gbt_wf_bp <-
+  workflow(preprocessor = recipe_base_pooling, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_bp) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_bp_wl_res <- gbt_wf_bp %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_bp_wl_res, "models/lgb_bp_wl_res_synth_only.rds")
+
+plot_race(lgb_bp_wl_res)
+```
+
+```{r}
+show_best(lgb_bp_wl_res, metric="f1_micro")
+```
+
+### bnd - base but no dummies
+
+```{r}
+recipe_base_nodum <- recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_other(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
+
+set.seed(124)
+
+gbt_wf_nodum <-
+  workflow(preprocessor = recipe_base_nodum, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_nodum) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_nodum_wl_res <- gbt_wf_nodum %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_nodum_wl_res, "models/lgb_nodum_wl_res_synth_only.rds")
+
+plot_race(lgb_nodum_wl_res)
+```
+
+```{r}
+show_best(lgb_nodum_wl_res)
+```
+
+### bpnd - base and pooling and no dummies, lencode hospital
+
+```{r}
+recipe_base_nodum_pool <- recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_mutate(across(contains("lesion_"), as.factor)) %>%
+  step_mutate(hospital_number = as_factor(hospital_number)) %>%
+  step_lencode_glm(hospital_number, outcome = "outcome") %>%
+  step_other(all_nominal_predictors()) %>%
+  step_nzv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+gbt_spec <- boost_tree(
+  mtry = tune(),
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("classification") %>%
+  translate()
+
+set.seed(124)
+
+gbt_wf_nodum_pool <-
+  workflow(preprocessor = recipe_base_nodum_pool, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_nodum_pool) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_nodum_pool_wl_res <- gbt_wf_nodum_pool %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(lgb_nodum_pool_wl_res, "models/lgb_nodum_pool_wl_res_synth_only.rds")
+
+plot_race(lgb_nodum_pool_wl_res)
+```
+
+### From a notebook
+
+> df['lesion_2'] = df['lesion_2'].apply(lambda x:1 if x>0 else 0)
+
+> df["deviation_from_normal_temp"] = df["rectal_temp"].apply(lambda x: abs(x - 37.8))
+
+
+```{r}
+recipe_base_notebook <- recipe(outcome ~ ., data = df_train) %>%
+  update_role(id, new_role = "ID") %>%
+  step_select(-lesion_3) %>% 
+  step_mutate(lesion_2 = if_else(lesion_2 > 0, 1, 0)) %>% 
+  step_mutate(hospital_number = as_factor(hospital_number)) %>%
+  step_lencode_glm(hospital_number, outcome = "outcome") %>%
+  step_mutate(deviation_from_normal_temp = abs(rectal_temp - 37.8)) %>% 
+  step_novel(all_nominal_predictors()) %>% 
+  step_other(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
+
+gbt_spec <- boost_tree(
+  mtry = tune(),
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("classification") %>%
+  translate()
+
+set.seed(124)
+
+gbt_wf_notebook <-
+  workflow(preprocessor = recipe_base_notebook, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf_notebook) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+lgb_wl_notebook_res <- gbt_wf_notebook %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 30,
+    metrics = metric_set(f1_micro),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+plot_race(lgb_wl_notebook_res)
+```
+
+
+
+# Modelling on joined data
+
+I'll keep NAs as is because GBT can handle them
+
+```{r}
+data_full <- bind_rows(data_synth %>% select(-id), data_orig) %>% 
+  filter(complete.cases(.))
+
+data_full %>% 
+  skim()
+```
+## Split (non-stratified)
+
+```{r}
+set.seed(124)
+
+data_split <- initial_split(data_full, prop = 0.99)
+
+df_train <- training(data_split)
+df_test <- testing(data_split)
+
+cv_folds <- vfold_cv(df_train, v = 10, repeats = 5) 
+
+f1_micro <- metric_tweak("f1_micro", f_meas, estimator = "micro")
+```
+
+## Recipes
+
+Two best recipes: one for LE, one for GBT
+
+LR: `recipe_base_lencode_lesions_embed_hosp_number`
+
+GBT: `recipe_base_nodum``
+
+```{r}
+# for LR
+recipe_base_lencode_lesions_embed_hosp_number <-
+  recipe(outcome ~ ., data = df_train) %>%
+  step_mutate(across(contains("lesion_"), as.factor)) %>% 
+  step_mutate(lesions_123 = paste(lesion_1, lesion_2, lesion_3, sep="_")) %>% 
+  step_select(-contains("lesion_")) %>%
+  step_mutate(hospital_number = as_factor(hospital_number)) %>% 
+  step_embed(hospital_number, outcome = "outcome") %>% 
+  step_lencode_glm(lesions_123, outcome = "outcome") %>% 
+  step_nzv(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_nzv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# I'll add step_novel() here
+recipe_base_nodum <- recipe(outcome ~ ., data = df_train) %>%
+  step_novel(all_nominal_predictors()) %>% 
+  step_other(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%
+  step_YeoJohnson(all_numeric_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
+```
+
+## Multinomial LR
+
+```{r}
+lr_spec <- multinom_reg(penalty = tune(),
+                        mixture = tune()) %>% 
+  set_engine("glmnet", num.threads=6)
+
+lr_wf <- workflow() %>% 
+  add_model(lr_spec) %>% 
+  add_recipe(recipe_base_lencode_lesions_embed_hosp_number)
+
+lr_full_res <- lr_wf %>%
+  tune_grid(
+    grid = 20,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE),
+    metrics = metric_set(f1_micro)
+  )
+
+saveRDS(lr_full_res, "models/lr_bllehn_full_data.rds")
+
+autoplot(lr_full_res)
+```
+
+```{r}
+show_best(lr_full_res, metric = "f1_micro")
+```
+
+## GBT
+
+```{r}
+library(finetune)
+library(bonsai)
+
+gbt_spec <- boost_tree(
+  mtry = tune(),
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n = tune(),
+  loss_reduction = tune()
+) %>%
+  set_engine("lightgbm", num.threads=8) %>%
+  set_mode("classification") %>%
+  translate()
+
+set.seed(124)
+
+gbt_wf <-
+  workflow(preprocessor = recipe_base_nodum, 
+           spec = gbt_spec) 
+
+param_set <- extract_parameter_set_dials(gbt_wf) %>%
+    finalize(x = df_train %>% select(-outcome))
+
+gbt_full_res_race <- gbt_wf %>%
+  tune_race_win_loss(
+    param_info = param_set,
+    resamples = cv_folds,
+    grid = 20,
+    metrics = metric_set(f1_micro, mcc),
+    control = control_race(
+      verbose_elim = TRUE,
+      save_pred = TRUE,
+      save_workflow = TRUE,
+      burn_in = 10
+    )
+  )
+
+saveRDS(gbt_full_res_race, "models/gbt_race_full_data.rds")
+
+plot_race(gbt_full_res_race)
+```
+
+```{r}
+show_best(gbt_full_res_race)
+```
+
+### Bayes
+
+```{r}
+gbt_full_bres <-
+      tune_bayes(
+        gbt_wf,
+        resamples = cv_folds,
+        initial = 24,
+        iter = 30,
+        metrics = metric_set(f1_micro),
+        param_info = param_set,
+        control = control_bayes(
+          no_improve = 20,
+          save_pred = TRUE,
+          verbose = FALSE,
+          save_workflow = TRUE
+        )
+      )
+
+show_best(gbt_full_bres)
+```
+
+
+## Prediction
+
+```{r}
+data_test <- read_csv("data/test.csv", show_col_types = F) %>% 
+  mutate(across(is_character, ~ as_factor(.x)),
+         hospital_number = as_factor(hospital_number))
+
+data_test
+```
+
+### GBT
+
+```{r}
+gbt_fit <- fit_best(gbt_full_res_race)
+gbt_fit <- fit_best(gbt_full_bres)
+
+data_test_proc <- recipe_base_nodum %>% 
+  prep() %>% 
+  bake(new_data = data_test)
+
+# it seems, here predict does the processing, otherwise I don't know how to explain why
+# public score on data_test_proc is 0.60 vs 0.80 on data_set
+test_prediction <- predict(gbt_fit, data_test) %>% 
+  mutate(id = data_test$id, .before = .pred_class) %>% 
+  rename("outcome" = .pred_class)
+
+write_csv(x =  test_prediction, file = "data/test_prediction_bayes.csv")
+```
+
